@@ -1,8 +1,9 @@
-name: Generate Issues from CSV
+name: Generate Issues from YAML Roadmap
 
 permissions:
-  contents: write
+  contents: read
   issues: write
+  projects: write
 
 on:
   workflow_dispatch:
@@ -15,10 +16,91 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create issues from file
-        uses: peter-evans/create-issue-from-file@v5
-        with:
-          title: Bulk Issue Creation
-          content-filepath: .github/roadmap.csv
-          labels: automation, roadmap
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install yq (YAML parser)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+
+      #######################################################################
+      # AUTO-DETECT PROJECT ID
+      #######################################################################
+      - name: Auto-detect GitHub Project ID
+        id: detect_project
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PROJECT_NUMBER: 1
+        run: |
+          PROJECT_ID=$(gh api graphql -f query='
+            query($owner: String!, $number: Int!) {
+              user(login: $owner) {
+                projectV2(number: $number) {
+                  id
+                }
+              }
+            }' -f owner="$OWNER" -F number="$PROJECT_NUMBER" --jq '.data.user.projectV2.id')
+
+          echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
+          echo "Detected Project ID: $PROJECT_ID"
+
+      #######################################################################
+      # PARSE YAML AND CREATE ISSUES
+      #######################################################################
+      - name: Parse YAML and create issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROJECT_ID: ${{ steps.detect_project.outputs.project_id }}
+        run: |
+          yq '.phases[]' .github/roadmap.yml | while read -r phase; do
+            PHASE_NAME=$(echo "$phase" | yq '.name')
+
+            echo "$phase" | yq '.items[]' | while read -r item; do
+              TITLE=$(echo "$item" | yq '.title')
+              DESCRIPTION=$(echo "$item" | yq '.description')
+              STATUS=$(echo "$item" | yq '.status')
+
+              BODY="### Description
+$DESCRIPTION
+
+### Phase
+$PHASE_NAME
+
+### Status
+$STATUS
+
+---
+
+Generated automatically from roadmap.yml"
+
+              # Skip if issue already exists
+              if gh issue list --search "$TITLE" --json title | jq -e ".[] | select(.title==\"$TITLE\")" > /dev/null; then
+                echo "Skipping existing issue: $TITLE"
+                continue
+              fi
+
+              echo "Creating issue: $TITLE"
+
+              ISSUE_URL=$(gh issue create \
+                --title "$TITLE" \
+                --body "$BODY" \
+                --label "roadmap" \
+                --label "$STATUS" \
+                --label "$PHASE_NAME" \
+                --json | jq -r '.url')
+
+              ISSUE_ID=$(gh api "$ISSUE_URL" --jq '.node_id')
+
+              #######################################################################
+              # ADD ISSUE TO PROJECT
+              #######################################################################
+              gh api graphql -f query='
+                mutation($project:ID!, $item:ID!) {
+                  addProjectV2ItemById(input: {projectId: $project, contentId: $item}) {
+                    item { id }
+                  }
+                }' -f project="$PROJECT_ID" -f item="$ISSUE_ID"
+
+            done
+          done
