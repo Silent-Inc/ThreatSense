@@ -17,7 +17,7 @@ jobs:
       - name: Extract version from TOC
         id: version
         run: |
-          VERSION=$(grep -E "^## Version:" ThreatSense/ThreatSense.toc | sed 's/## Version: //')
+          VERSION=$(grep -E "^## Version:" ThreatSense.toc | sed 's/## Version: //')
           echo "current=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Auto-increment patch version
@@ -30,13 +30,13 @@ jobs:
 
       - name: Update TOC with new version
         run: |
-          sed -i "s/^## Version:.*/## Version: ${{ steps.bump.outputs.new }}/" ThreatSense/ThreatSense.toc
+          sed -i "s/^## Version:.*/## Version: ${{ steps.bump.outputs.new }}/" ThreatSense.toc
 
       - name: Commit updated version
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add ThreatSense/ThreatSense.toc
+          git add ThreatSense.toc
           git commit -m "Bump version to ${{ steps.bump.outputs.new }}"
           git push
 
