@@ -1,0 +1,73 @@
+Title,Description,Phase,Status
+Multi‑bar threat list (TinyThreat‑style),Build the core multi‑bar threat list display,Phase 1,Todo
+Smooth updates for threat list,Implement smooth threat value transitions,Phase 1,Todo
+Class colors for list entries,Color each entry based on class,Phase 1,Todo
+Tank indicator in list,Show tank role indicator next to units,Phase 1,Todo
+Sorting logic for threat list,Sort list by threat %,Phase 1,Todo
+Threat % display,Show percentage threat values,Phase 1,Todo
+Display mode selector,Add dropdown for display mode selection,Phase 1,Todo
+Wire display mode into ThreatBar,ThreatBar respects selected display mode,Phase 1,Todo
+Wire display mode into ThreatList,ThreatList respects selected display mode,Phase 1,Todo
+Auto‑hide/show based on mode,Hide or show UI elements dynamically,Phase 1,Todo
+Auto‑update UI when mode changes,Update UI instantly without reload,Phase 1,Todo
+Preview window with fake data,Create preview window for display settings,Phase 1,Todo
+Preview updates live as settings change,Preview reacts to settings instantly,Phase 1,Todo
+
+Parent settings panel,Create root settings panel with metadata,Phase 2,Todo
+Display panel: display mode dropdown,Add display mode selector,Phase 2,Todo
+Display panel: bar textures dropdown,Add texture selection,Phase 2,Todo
+Display panel: font dropdown,Add font selection,Phase 2,Todo
+Display panel: color pickers,Add color pickers for threat levels,Phase 2,Todo
+Display panel: border thickness slider,Add slider for border thickness,Phase 2,Todo
+Display panel: threat smoothing slider,Add smoothing intensity slider,Phase 2,Todo
+Display panel: combat fade toggle,Add toggle for fade in/out,Phase 2,Todo
+Display panel: smooth animations toggle,Add toggle for animation smoothing,Phase 2,Todo
+Display panel: Test Mode button,Add button to activate test mode,Phase 2,Todo
+Display panel: Preview window integration,Connect preview window to settings,Phase 2,Todo
+Warnings panel: enable toggle,Add toggle to enable warnings,Phase 2,Todo
+Warnings panel: position selector,Add dropdown for warning position,Phase 2,Todo
+Warnings panel: custom warning text,Add input for custom warning text,Phase 2,Todo
+Warnings panel: pulse animation toggle,Add toggle for pulse animation,Phase 2,Todo
+Warnings panel: color pickers per level,Add color pickers for each warning level,Phase 2,Todo
+Warnings panel: cooldown slider,Add slider for warning cooldown,Phase 2,Todo
+Warnings panel: sound dropdowns,Add dropdowns for warning sounds,Phase 2,Todo
+Warnings panel: volume slider,Add slider for warning volume,Phase 2,Todo
+Warnings panel: Test Warning button,Add button to test warnings,Phase 2,Todo
+Warnings panel: Preview Warning Animation button,Add preview for warning animation,Phase 2,Todo
+Reset to Defaults button,Add reset functionality,Phase 2,Todo
+Slash command /ts opens settings,Implement slash command to open settings,Phase 2,Todo
+
+Rounded edges for bars,Add rounded bar textures and backdrops,Phase 3,Todo
+Smooth bar animations,Add lerp‑based bar animations,Phase 3,Todo
+Threat history graph,Add optional rolling threat graph,Phase 3,Todo
+Combat fade,Fade UI in/out based on combat state,Phase 3,Todo
+
+Per‑spec profiles,Auto‑swap profiles based on spec,Phase 4,Todo
+Per‑role overrides,Add Tank/DPS/Healer overrides,Phase 4,Todo
+Role‑specific thresholds,Add thresholds per role,Phase 4,Todo
+Role‑specific warning behavior,Customize warnings per role,Phase 4,Todo
+Profile management: Copy,Add profile copy functionality,Phase 4,Todo
+Profile management: Reset,Add profile reset functionality,Phase 4,Todo
+Profile management: Import/Export,Add import/export (optional),Phase 4,Todo
+
+Movable warning frame,Make warning frame draggable,Phase 5,Todo
+Warning position presets,Add preset positions,Phase 5,Todo
+Custom warning text,Add custom text options,Phase 5,Todo
+Pulse animation improvements,Improve pulse animation behavior,Phase 5,Todo
+Color per warning level,Add color per warning severity,Phase 5,Todo
+Warning preview window,Add preview for warning frame,Phase 5,Todo
+Separate sound dropdowns,Add separate sound selectors,Phase 5,Todo
+Volume slider,Add volume control,Phase 5,Todo
+Test Sound button,Add button to test sound,Phase 5,Todo
+Warning cooldown slider,Add cooldown slider,Phase 5,Todo
+
+Minimap button,Add minimap button with toggle,Phase 6,Todo
+LibDataBroker launcher,Add LDB launcher for panels,Phase 6,Todo
+Slash commands: /ts /threatsense /ts config,Add additional slash commands,Phase 6,Todo
+
+Fix parent/child panel nesting,Fix settings panel nesting issues,Phase 7,Todo
+Fix ThreatEngine edge cases,Fix edge cases in threat engine,Phase 7,Todo
+Fix solo mode behavior,Fix behavior when solo,Phase 7,Todo
+Performance tuning,Optimize performance,Phase 7,Todo
+General bug fixes,Fix miscellaneous issues,Phase 7,Todo
+Code cleanup & refactoring,Refactor and clean up code,Phase 7,Todo
