@@ -83,6 +83,10 @@ function Core:OnPlayerLogin()
         TS.WarningFrame:Initialize()
     end
 
+    if TS.DisplayMode and TS.DisplayMode.Set then
+        TS.DisplayMode:Set(TS.DisplayMode.mode)
+    end
+
     -- Initialize preview systems
     if TS.DisplayPreview and TS.DisplayPreview.Initialize then
         TS.DisplayPreview:Initialize()

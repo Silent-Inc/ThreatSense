@@ -52,6 +52,17 @@ function ThreatList:Create(parent)
     TS.EventBus:Register("THREAT_UPDATED", function(data)
         self:Update(data)
     end)
+	
+    ------------------------------------------------------------
+    -- React to display mode changes
+    ------------------------------------------------------------
+    TS.EventBus:Register("DISPLAY_MODE_CHANGED", function(mode)
+		if mode == "LIST_ONLY" or mode == "BAR_AND_LIST" then
+			TS.ThreatList:Show()
+		else
+			TS.ThreatList:Hide()
+		end
+	end)
 end
 
 ------------------------------------------------------------
