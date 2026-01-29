@@ -2,8 +2,218 @@ phases:
   - name: Phase 1 — Core Display Features
     items:
       - title: Multi‑bar threat list (TinyThreat‑style)
-        description: Build the core multi‑bar threat list display
+        description: Build the core multi‑bar threat list display.
         status: Todo
       - title: Smooth updates for threat list
-        description: Implement smooth threat value transitions
+        description: Implement smooth threat value transitions.
+        status: Todo
+      - title: Class colors for list entries
+        description: Apply class colors to each threat list entry.
+        status: Todo
+      - title: Tank indicator in list
+        description: Show tank role indicator next to units in the list.
+        status: Todo
+      - title: Sorting logic for threat list
+        description: Sort threat list entries by threat percentage.
+        status: Todo
+      - title: Threat % display
+        description: Display threat percentage for each unit.
+        status: Todo
+      - title: Display mode selector
+        description: Add dropdown to select display mode (single bar, bar+list, list only).
+        status: Todo
+      - title: Wire display mode into ThreatBar
+        description: Make ThreatBar respect the selected display mode.
+        status: Todo
+      - title: Wire display mode into ThreatList
+        description: Make ThreatList respect the selected display mode.
+        status: Todo
+      - title: Auto‑hide/show based on mode
+        description: Automatically hide or show UI elements depending on mode.
+        status: Todo
+      - title: Auto‑update UI when mode changes
+        description: Update UI instantly when display mode changes without reload.
+        status: Todo
+      - title: Preview window with fake data
+        description: Create preview window using fake threat data.
+        status: Todo
+      - title: Preview updates live as settings change
+        description: Make preview window react to settings in real time.
+        status: Todo
+
+  - name: Phase 2 — Interface Options (Settings API)
+    items:
+      - title: Parent settings panel
+        description: Create root settings panel with addon metadata.
+        status: Todo
+      - title: Display panel: display mode dropdown
+        description: Add display mode selector to settings.
+        status: Todo
+      - title: Display panel: bar textures dropdown
+        description: Add bar texture selection dropdown.
+        status: Todo
+      - title: Display panel: font dropdown
+        description: Add font selection dropdown.
+        status: Todo
+      - title: Display panel: color pickers
+        description: Add color pickers for safe, warning, danger, and critical levels.
+        status: Todo
+      - title: Display panel: border thickness slider
+        description: Add slider to adjust border thickness.
+        status: Todo
+      - title: Display panel: threat smoothing slider
+        description: Add slider to control threat smoothing intensity.
+        status: Todo
+      - title: Display panel: combat fade toggle
+        description: Add toggle to fade UI in/out based on combat state.
+        status: Todo
+      - title: Display panel: smooth animations toggle
+        description: Add toggle for smooth bar animations.
+        status: Todo
+      - title: Display panel: Test Mode button
+        description: Add button to activate test mode for previewing UI.
+        status: Todo
+      - title: Display panel: Preview window integration
+        description: Connect preview window to display settings.
+        status: Todo
+      - title: Warnings panel: enable toggle
+        description: Add toggle to enable or disable warnings.
+        status: Todo
+      - title: Warnings panel: position selector
+        description: Add dropdown to select warning frame position.
+        status: Todo
+      - title: Warnings panel: custom warning text
+        description: Add input for custom warning text.
+        status: Todo
+      - title: Warnings panel: pulse animation toggle
+        description: Add toggle for pulse animation.
+        status: Todo
+      - title: Warnings panel: color pickers per level
+        description: Add color pickers for each warning severity level.
+        status: Todo
+      - title: Warnings panel: cooldown slider
+        description: Add slider to control warning cooldown.
+        status: Todo
+      - title: Warnings panel: sound dropdowns
+        description: Add dropdowns for warning, danger, and critical sounds.
+        status: Todo
+      - title: Warnings panel: volume slider
+        description: Add slider to control warning volume.
+        status: Todo
+      - title: Warnings panel: Test Warning button
+        description: Add button to preview warning behavior.
+        status: Todo
+      - title: Warnings panel: Preview Warning Animation button
+        description: Add button to preview warning animation.
+        status: Todo
+      - title: Reset to Defaults button
+        description: Add button to reset all settings to defaults.
+        status: Todo
+      - title: Slash command /ts opens settings
+        description: Implement slash command to open settings panel.
+        status: Todo
+
+  - name: Phase 3 — Visual Polish & UX
+    items:
+      - title: Rounded edges for bars
+        description: Add rounded bar textures and backdrops.
+        status: Todo
+      - title: Smooth bar animations
+        description: Add lerp‑based smooth bar animations.
+        status: Todo
+      - title: Threat history graph
+        description: Add optional rolling threat history graph.
+        status: Todo
+      - title: Combat fade
+        description: Fade UI in/out based on combat state.
+        status: Todo
+
+  - name: Phase 4 — Profiles & Role/Spec Overrides
+    items:
+      - title: Per‑spec profiles
+        description: Auto‑swap profiles based on active spec.
+        status: Todo
+      - title: Per‑role overrides
+        description: Add Tank/DPS/Healer overrides.
+        status: Todo
+      - title: Role‑specific thresholds
+        description: Add threat thresholds per role.
+        status: Todo
+      - title: Role‑specific warning behavior
+        description: Customize warning behavior per role.
+        status: Todo
+      - title: Profile management: Copy
+        description: Add profile copy functionality.
+        status: Todo
+      - title: Profile management: Reset
+        description: Add profile reset functionality.
+        status: Todo
+      - title: Profile management: Import/Export
+        description: Add optional import/export support.
+        status: Todo
+
+  - name: Phase 5 — Warning System Enhancements
+    items:
+      - title: Movable warning frame
+        description: Make warning frame draggable.
+        status: Todo
+      - title: Warning position presets
+        description: Add preset positions for warning frame.
+        status: Todo
+      - title: Custom warning text
+        description: Add custom text options for warnings.
+        status: Todo
+      - title: Pulse animation improvements
+        description: Improve pulse animation behavior.
+        status: Todo
+      - title: Color per warning level
+        description: Add color customization per warning severity.
+        status: Todo
+      - title: Warning preview window
+        description: Add preview window for warning frame.
+        status: Todo
+      - title: Separate sound dropdowns
+        description: Add separate sound selectors for each warning level.
+        status: Todo
+      - title: Volume slider
+        description: Add volume control slider.
+        status: Todo
+      - title: Test Sound button
+        description: Add button to test warning sounds.
+        status: Todo
+      - title: Warning cooldown slider
+        description: Add slider to control warning cooldown.
+        status: Todo
+
+  - name: Phase 6 — Addon Integration & Convenience
+    items:
+      - title: Minimap button
+        description: Add minimap button with visibility toggle.
+        status: Todo
+      - title: LibDataBroker launcher
+        description: Add LDB launcher for TitanPanel, Bazooka, etc.
+        status: Todo
+      - title: Slash commands: /ts /threatsense /ts config
+        description: Add additional slash commands.
+        status: Todo
+
+  - name: Phase 7 — Maintenance & Fixes
+    items:
+      - title: Fix parent/child panel nesting
+        description: Fix issues with settings panel nesting.
+        status: Todo
+      - title: Fix ThreatEngine edge cases
+        description: Fix edge cases in threat engine logic.
+        status: Todo
+      - title: Fix solo mode behavior
+        description: Fix behavior when player is solo.
+        status: Todo
+      - title: Performance tuning
+        description: Optimize performance across modules.
+        status: Todo
+      - title: General bug fixes
+        description: Fix miscellaneous issues.
+        status: Todo
+      - title: Code cleanup & refactoring
+        description: Refactor and clean up codebase.
         status: Todo
