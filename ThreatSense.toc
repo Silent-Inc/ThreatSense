@@ -2,7 +2,7 @@
 ## Title: ThreatSense
 ## Notes: Modern threat display & warning addon
 ## Author: Mezza9Angel
-## Version: 0.1.1
+## Version: 0.1.2
 ## SavedVariables: ThreatSenseDB
 
 # Core
