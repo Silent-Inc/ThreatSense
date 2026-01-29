@@ -3,7 +3,6 @@ name: Generate Issues from YAML Roadmap
 permissions:
   contents: read
   issues: write
-  projects: write
 
 on:
   workflow_dispatch:
