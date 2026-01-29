@@ -1,0 +1,19 @@
+name: Generate Issues from CSV
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read CSV and create issues
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "Bulk Issue Creation"
+          content-filepath: .github/roadmap.csv
+          labels: "automation, roadmap"
