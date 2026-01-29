@@ -1,0 +1,60 @@
+name: Auto Version + Package Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "release"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from TOC
+        id: version
+        run: |
+          VERSION=$(grep -E "^## Version:" ThreatSense/ThreatSense.toc | sed 's/## Version: //')
+          echo "current=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Auto-increment patch version
+        id: bump
+        run: |
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${{ steps.version.outputs.current }}"
+          PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "new=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update TOC with new version
+        run: |
+          sed -i "s/^## Version:.*/## Version: ${{ steps.bump.outputs.new }}/" ThreatSense/ThreatSense.toc
+
+      - name: Commit updated version
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add ThreatSense/ThreatSense.toc
+          git commit -m "Bump version to ${{ steps.bump.outputs.new }}"
+          git push
+
+      - name: Create ZIP package
+        run: |
+          mkdir -p build
+          cd ThreatSense
+          zip -r "../build/ThreatSense-v${{ steps.bump.outputs.new }}.zip" . \
+            -x "*.git*" \
+            -x "**/.github/**" \
+            -x "**/.vscode/**" \
+            -x "**/.idea/**"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.bump.outputs.new }}"
+          name: "ThreatSense v${{ steps.bump.outputs.new }}"
+          files: build/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
