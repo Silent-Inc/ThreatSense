@@ -1,18 +1,18 @@
 ## Interface: 120000, 120001
 ## Title: ThreatSense
 ## Notes: Modern threat display and warning system.
-## Author: Tim
+## Author: Mezza9Angel
 ## Version: @project-version@
 ## SavedVariables: ThreatSenseDB
 
 # Libraries
-libs\LibSharedMedia-3.0\LibSharedMedia-3.0.lua
+Libs\LibSharedMedia-3.0\lib.xml
 
 # Core
 Core\EventBus.lua
 Core\Init.lua
 Core\SlashCommands.lua
-Core\Constant.lua
+Core\Constants.lua
 Core\Utils.lua
 
 # Systems
