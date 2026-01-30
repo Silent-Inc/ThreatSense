@@ -1,109 +1,102 @@
--- Modules/ThreatEngine.lua
--- Core threat calculation and tracking
+-- ThreatSense: ThreatEngine.lua
+-- Core threat collection and tracking (event-driven, multi-unit aware)
 
 local ADDON_NAME, TS = ...
 
-TS.ThreatEngine = {}
+TS.ThreatEngine = TS.ThreatEngine or {}
 local Engine = TS.ThreatEngine
 
-Engine.currentThreat = {
-    target = nil,
-    playerThreat = 0,
-    playerThreatPct = 0,
-    isTanking = false,
-    tankThreat = 0,
-    topThreat = 0,
-    relativePct = 0,
-    threatList = {}
-}
+------------------------------------------------------------
+-- Internal state
+------------------------------------------------------------
+Engine.currentTarget = nil      -- unit id ("target" or "focus")
+Engine.currentTargetName = nil  -- string
+Engine.threatByUnit = {}        -- [unit] = threatData
+Engine.threatList = {}          -- sorted list of threat entries
 
-function Engine:Initialize()
-    TS.Utils:Debug("ThreatEngine initialized")
+------------------------------------------------------------
+-- Helpers
+------------------------------------------------------------
+local function IsValidThreatTarget(unit)
+    if not UnitExists(unit) then return false end
+    if not UnitCanAttack("player", unit) then return false end
+    if UnitIsDeadOrGhost(unit) then return false end
+    return true
 end
 
+local function GetPrimaryTarget()
+    if IsValidThreatTarget("target") then
+        return "target"
+    elseif IsValidThreatTarget("focus") then
+        return "focus"
+    end
+    return nil
+end
+
+------------------------------------------------------------
+-- Core update
+------------------------------------------------------------
 function Engine:Update()
-    self:UpdateTargetThreat()
-end
+    local target = GetPrimaryTarget()
 
-function Engine:UpdateTargetThreat()
-    local target = "target"
-
-    if not UnitExists(target) or not UnitCanAttack("player", target) then
-        self:ResetThreatData()
+    if not target then
+        self:Reset()
         return
     end
 
-    local playerData = TS.Utils:GetUnitThreat("player", target)
-    if not playerData then
-        self:ResetThreatData()
+    local targetName = UnitName(target)
+    self.currentTarget = target
+    self.currentTargetName = targetName
+
+    self:UpdateThreatForTarget(target)
+end
+
+function Engine:UpdateThreatForTarget(target)
+    if not TS.GroupManager or not TS.GroupManager.GetUnits then
         return
     end
 
-    self.currentThreat.target = UnitName(target)
-    self.currentThreat.playerThreat = playerData.threatValue
-    self.currentThreat.playerThreatPct = playerData.threatPct
-    self.currentThreat.isTanking = playerData.isTanking
-
-    self:UpdateThreatList(target)
-    self:CalculateRelativeThreat()
-end
-
-function Engine:UpdateThreatList(target)
+    local units = TS.GroupManager:GetUnits()
+    local threatByUnit = {}
     local threatList = {}
+
     local topThreat = 0
     local tankThreat = 0
+    local playerThreat = 0
+    local playerThreatPct = 0
+    local playerIsTanking = false
 
-    local isInGroup = IsInGroup()
-    local isInRaid = IsInRaid()
+    for _, unit in ipairs(units) do
+        local threatData = TS.Utils:GetUnitThreat(unit, target)
+        if threatData and threatData.threatValue > 0 then
+            local name = UnitName(unit)
+            local _, class = UnitClass(unit)
 
-    if isInGroup or isInRaid then
-        local unitPrefix = isInRaid and "raid" or "party"
-        local numMembers = isInRaid and GetNumGroupMembers() or GetNumSubgroupMembers()
+            local entry = {
+                unit       = unit,
+                name       = name,
+                class      = class,
+                threat     = threatData.threatValue,
+                threatPct  = threatData.threatPct,
+                isTanking  = threatData.isTanking,
+            }
 
-        for i = 1, numMembers do
-            local unit = unitPrefix .. i
-            if UnitExists(unit) then
-                local threatData = TS.Utils:GetUnitThreat(unit, target)
-                if threatData then
-                    local name = UnitName(unit)
-                    local _, class = UnitClass(unit)
+            threatByUnit[unit] = entry
+            table.insert(threatList, entry)
 
-                    table.insert(threatList, {
-                        name = name,
-                        class = class,
-                        unit = unit,
-                        threat = threatData.threatValue,
-                        threatPct = threatData.threatPct,
-                        isTanking = threatData.isTanking
-                    })
-
-                    if threatData.threatValue > topThreat then
-                        topThreat = threatData.threatValue
-                    end
-
-                    if threatData.isTanking and threatData.threatValue > tankThreat then
-                        tankThreat = threatData.threatValue
-                    end
-                end
+            if threatData.threatValue > topThreat then
+                topThreat = threatData.threatValue
             end
-        end
-    else
-        local playerData = TS.Utils:GetUnitThreat("player", target)
-        if playerData then
-            local name = UnitName("player")
-            local _, class = UnitClass("player")
 
-            table.insert(threatList, {
-                name = name,
-                class = class,
-                unit = "player",
-                threat = playerData.threatValue,
-                threatPct = playerData.threatPct,
-                isTanking = playerData.isTanking
-            })
+            if threatData.isTanking and threatData.threatValue > tankThreat then
+                tankThreat = threatData.threatValue
+            end
 
-            tankThreat = playerData.threatValue
-            topThreat = playerData.threatValue
+            if unit == "player" then
+                playerThreat = threatData.threatValue
+                playerThreatPct = threatData.threatPct
+                playerIsTanking = threatData.isTanking
+            end
         end
     end
 
@@ -111,64 +104,99 @@ function Engine:UpdateThreatList(target)
         return a.threat > b.threat
     end)
 
-    self.currentThreat.threatList = threatList
-    self.currentThreat.topThreat = topThreat
-    self.currentThreat.tankThreat = tankThreat
+    self.threatByUnit = threatByUnit
+    self.threatList = threatList
+    self.topThreat = topThreat
+    self.tankThreat = tankThreat
+    self.playerThreat = playerThreat
+    self.playerThreatPct = playerThreatPct
+    self.playerIsTanking = playerIsTanking
+
+    self:EmitThreatEvents()
 end
 
-function Engine:CalculateRelativeThreat()
-    local playerRole = TS.Utils:GetPlayerRole()
+------------------------------------------------------------
+-- Event emission
+------------------------------------------------------------
+function Engine:EmitThreatEvents()
+    if not TS.EventBus or not TS.EventBus.Send then
+        return
+    end
 
-    if playerRole == "TANK" and self.currentThreat.isTanking then
-        if #self.currentThreat.threatList >= 2 then
-            local secondThreat = self.currentThreat.threatList[2].threat
-            if secondThreat > 0 then
-                self.currentThreat.relativePct =
-                    (self.currentThreat.playerThreat / secondThreat) * 100
-            else
-                self.currentThreat.relativePct = 0
+    TS.EventBus:Send("THREAT_TARGET_UPDATED", {
+        unit = self.currentTarget,
+        name = self.currentTargetName,
+    })
+
+    TS.EventBus:Send("THREAT_LIST_UPDATED", {
+        list = self.threatList,
+        topThreat = self.topThreat,
+        tankThreat = self.tankThreat,
+    })
+
+    TS.EventBus:Send("PLAYER_THREAT_UPDATED", {
+        threat = self.playerThreat,
+        threatPct = self.playerThreatPct,
+        isTanking = self.playerIsTanking,
+    })
+end
+
+------------------------------------------------------------
+-- Public API
+------------------------------------------------------------
+function Engine:GetCurrentTarget()
+    return self.currentTarget, self.currentTargetName
+end
+
+function Engine:GetThreatList()
+    return self.threatList
+end
+
+function Engine:GetThreatForUnit(unit)
+    return self.threatByUnit[unit]
+end
+
+function Engine:GetPlayerThreat()
+    return self.playerThreat, self.playerThreatPct, self.playerIsTanking
+end
+
+------------------------------------------------------------
+-- Reset state
+------------------------------------------------------------
+function Engine:Reset()
+    self.currentTarget = nil
+    self.currentTargetName = nil
+    self.threatByUnit = {}
+    self.threatList = {}
+    self.topThreat = 0
+    self.tankThreat = 0
+    self.playerThreat = 0
+    self.playerThreatPct = 0
+    self.playerIsTanking = false
+
+    if TS.EventBus and TS.EventBus.Send then
+        TS.EventBus:Send("THREAT_RESET")
+    end
+end
+
+------------------------------------------------------------
+-- Initialization
+------------------------------------------------------------
+local updateFrame
+
+function Engine:Initialize()
+    TS.Utils:Debug("ThreatEngine 2.0 initialized")
+
+    if not updateFrame then
+        updateFrame = CreateFrame("Frame")
+        local elapsed = 0
+
+        updateFrame:SetScript("OnUpdate", function(_, delta)
+            elapsed = elapsed + delta
+            if elapsed >= TS.UPDATE_INTERVAL then
+                elapsed = 0
+                Engine:Update()
             end
-        else
-            self.currentThreat.relativePct = 0
-        end
-    else
-        local referenceThreat =
-            (self.currentThreat.tankThreat > 0 and self.currentThreat.tankThreat)
-            or self.currentThreat.topThreat
-
-        if referenceThreat > 0 then
-            self.currentThreat.relativePct =
-                (self.currentThreat.playerThreat / referenceThreat) * 100
-        else
-            self.currentThreat.relativePct = 0
-        end
+        end)
     end
 end
-
-function Engine:ResetThreatData()
-    self.currentThreat = {
-        target = nil,
-        playerThreat = 0,
-        playerThreatPct = 0,
-        isTanking = false,
-        tankThreat = 0,
-        topThreat = 0,
-        relativePct = 0,
-        threatList = {}
-    }
-end
-
-function Engine:GetThreatData()
-    return self.currentThreat
-end
-
-function Engine:GetMemberThreat(unit)
-    for _, data in ipairs(self.currentThreat.threatList) do
-        if data.unit == unit then
-            return data
-        end
-    end
-    return nil
-end
-
-return Engine

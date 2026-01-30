@@ -22,6 +22,8 @@ Systems\ProfileManager.lua
 Systems\RoleManager.lua
 Systems\SharedMedia.lua
 Systems\Smoothing.lua
+Systems\GroupManager.lua
+Systems\ThreatMath.lua
 
 # UI - Display
 UI\Display\ThreatBar.lua

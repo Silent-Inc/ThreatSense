@@ -1,16 +1,23 @@
 -- ThreatSense: RoleManager.lua
--- Detects player role (Tank/Healer/DPS) and emits events
+-- Robust, override-capable role detection with event-driven updates
 
 local ADDON_NAME, TS = ...
-local RM = {}
-TS.RoleManager = RM
 
+TS.RoleManager = TS.RoleManager or {}
+local RM = TS.RoleManager
+
+------------------------------------------------------------
+-- Internal state
+------------------------------------------------------------
 RM.currentRole = nil
+RM.forcedRole = nil
+RM.lastUpdate = 0
+RM.UPDATE_DEBOUNCE = 0.2 -- seconds
 
 ------------------------------------------------------------
 -- Internal: Determine role using Blizzard API
 ------------------------------------------------------------
-local function DetectRole()
+local function DetectRoleFromGame()
     -- Retail: specialization-based
     if GetSpecialization then
         local spec = GetSpecialization()
@@ -36,7 +43,7 @@ end
 -- Public API
 ------------------------------------------------------------
 function RM:GetRole()
-    return self.currentRole or "DAMAGER"
+    return self.forcedRole or self.currentRole or "DAMAGER"
 end
 
 function RM:IsTank()
@@ -52,36 +59,67 @@ function RM:IsDPS()
 end
 
 ------------------------------------------------------------
+-- Forced role override
+------------------------------------------------------------
+function RM:SetForcedRole(role)
+    if role ~= "TANK" and role ~= "HEALER" and role ~= "DAMAGER" and role ~= nil then
+        return -- invalid
+    end
+
+    self.forcedRole = role
+    self:UpdateRole(true) -- force update
+end
+
+------------------------------------------------------------
 -- Update role and emit events
 ------------------------------------------------------------
-function RM:UpdateRole()
-    local newRole = DetectRole()
+function RM:UpdateRole(force)
+    local now = GetTime()
+    if not force and (now - self.lastUpdate) < self.UPDATE_DEBOUNCE then
+        return
+    end
+    self.lastUpdate = now
+
+    local detected = DetectRoleFromGame()
+    local newRole = self.forcedRole or detected
+
     if newRole ~= self.currentRole then
         self.currentRole = newRole
+
         TS.Utils:Debug("RoleManager: Role changed to " .. newRole)
-        TS.EventBus:Emit("ROLE_CHANGED", newRole)
+
+        -- Notify systems
+        TS.EventBus:Send("ROLE_CHANGED", newRole)
     end
 end
 
 ------------------------------------------------------------
--- Initialize
+-- Initialization
 ------------------------------------------------------------
 function RM:Initialize()
-    self:UpdateRole()
+    -- Initial detection
+    self:UpdateRole(true)
+
+    -- Emit initial event
+    TS.EventBus:Send("ROLE_INITIALIZED", self.currentRole)
 
     -- Retail: spec changes
     if C_EventUtils and C_EventUtils.IsEventValid("PLAYER_SPECIALIZATION_CHANGED") then
         local f = CreateFrame("Frame")
         f:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-        f:SetScript("OnEvent", function() self:UpdateRole() end)
+        f:SetScript("OnEvent", function()
+            self:UpdateRole()
+        end)
     end
 
     -- Classic: group role assignment changes
     local f2 = CreateFrame("Frame")
     f2:RegisterEvent("PLAYER_ROLES_ASSIGNED")
-    f2:SetScript("OnEvent", function() self:UpdateRole() end)
+    f2:SetScript("OnEvent", function()
+        self:UpdateRole()
+    end)
 
-    TS.Utils:Debug("RoleManager initialized")
+    TS.Utils:Debug("RoleManager 2.0 initialized")
 end
 
 return RM

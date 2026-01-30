@@ -73,6 +73,12 @@ function Core:OnAddonLoaded()
     if TS.RoleManager and TS.RoleManager.Initialize then
         TS.RoleManager:Initialize()
     end
+    
+	-- Initialize GroupManager
+    -- (Fix: this was missing)
+    if TS.GroupManager and TS.GroupManager.Initialize then
+        TS.GroupManager:Initialize()
+    end
 
     -- Initialize smoothing engine
     -- (Fix: missing; ThreatBar uses smoothing)
