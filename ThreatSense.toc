@@ -2,7 +2,11 @@
 ## Title: ThreatSense
 ## Notes: Modern threat display and warning system.
 ## Author: Mezza9Angel
-## Version: @project-version@..1
+<<<<<<< HEAD
+## Version: 0.2.1
+=======
+## Version: @project-version@..3
+>>>>>>> 359f71f40355f4e62552c51f66ce06136db5fdb5
 ## SavedVariables: ThreatSenseDB
 
 # Libraries
@@ -16,6 +20,7 @@ Core\Constants.lua
 Core\Utils.lua
 
 # Systems
+Systems\ThreatMath.lua
 Systems\ThreatEngine.lua
 Systems\WarningEngine.lua
 Systems\ProfileManager.lua
@@ -23,7 +28,6 @@ Systems\RoleManager.lua
 Systems\SharedMedia.lua
 Systems\Smoothing.lua
 Systems\GroupManager.lua
-Systems\ThreatMath.lua
 
 # UI - Display
 UI\Display\ThreatBar.lua

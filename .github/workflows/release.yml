@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Extract version from TOC
         id: version
@@ -40,8 +42,13 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add ThreatSense.toc
-          git commit -m "Bump version to ${{ steps.bump.outputs.new }}"
+          git commit -m "Bump version to ${{ steps.bump.outputs.new }}" || echo "No changes to commit"
           git push
+
+      - name: Create Git tag
+        run: |
+          git tag "v${{ steps.bump.outputs.new }}"
+          git push origin "v${{ steps.bump.outputs.new }}"
 
       - name: Create ZIP package
         run: |
