@@ -1,62 +1,125 @@
--- ThreatSense: ConfigRoles.lua
--- Role-based profile settings
+-- ThreatSense: Roles.lua
+-- Modern role-based profile settings (AceDB, ProfileManager 2.0)
 
 local ADDON_NAME, TS = ...
-local ConfigRoles = {}
-TS.ConfigRoles = ConfigRoles
+local Roles = {}
+TS.Roles = Roles
 
 local PM = TS.ProfileManager
 
-function ConfigRoles:Initialize()
-    local category, layout = Settings.RegisterVerticalLayoutCategory("ThreatSense - Roles")
+------------------------------------------------------------
+-- Helpers
+------------------------------------------------------------
+local function Header(layout, text)
+    local h = layout:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    h:SetText(text)
+    h:SetPoint("TOPLEFT", 0, -12)
+    return h
+end
+
+local function FireProfileChanged()
+    TS.EventBus:Send("PROFILE_CHANGED")
+
+    if TS.DisplayPreview and TS.DisplayPreview:IsActive() then
+        TS.DisplayPreview:Stop()
+    end
+    if TS.WarningPreview and TS.WarningPreview:IsActive() then
+        TS.WarningPreview:Stop()
+    end
+end
+
+local function BuildProfileOptions()
+    local opts = {}
+    for name in pairs(TS.db.profiles) do
+        table.insert(opts, { text = name, value = name })
+    end
+    return opts
+end
+
+------------------------------------------------------------
+-- Initialize
+------------------------------------------------------------
+function Roles:Initialize()
+    local categoryName = TS.Categories.ROLES
+    local category, layout = Settings.RegisterVerticalLayoutCategory(categoryName)
     self.category = category
 
+    local roleDB = TS.db.profile.roles
+
     ------------------------------------------------------------
-    -- Auto-switch toggle
+    -- AUTO-SWITCH
     ------------------------------------------------------------
-    local autoVar = Settings.RegisterAddOnSetting(
+    Header(layout, "Automatic Role Switching")
+
+    local autoSetting = Settings.RegisterAddOnSetting(
         category,
-        "Auto Switch Profiles",
-        "ThreatSenseDB_AutoSwitchProfiles",
+        "AutoSwitchProfiles",
+        nil,
         Settings.VarType.Boolean,
-        false -- Option B: disabled by default
+        roleDB.autoSwitch
     )
 
     Settings.CreateCheckbox(
         layout,
-        autoVar,
+        autoSetting,
         "Enable Auto-Switch Profiles",
-        "Automatically switch profiles when changing roles."
+        "Automatically switch profiles when your role changes."
     )
 
+    autoSetting:SetValueChangedCallback(function(value)
+        roleDB.autoSwitch = value
+        FireProfileChanged()
+    end)
+
     ------------------------------------------------------------
-    -- Role → Profile mapping
+    -- ROLE → PROFILE MAPPING
     ------------------------------------------------------------
-    local roles = { "TANK", "HEALER", "DAMAGER" }
+    Header(layout, "Role-Based Profile Mapping")
+
+    local roles = { "TANK", "HEALER", "DPS" }
 
     for _, role in ipairs(roles) do
-        local var = Settings.RegisterAddOnSetting(
+        local setting = Settings.RegisterAddOnSetting(
             category,
-            role .. " Profile",
-            "ThreatSenseDB_RoleProfile_" .. role,
+            "ProfileFor" .. role,
+            nil,
             Settings.VarType.String,
-            "Default"
+            roleDB[role]
         )
 
         Settings.CreateDropdown(
             layout,
-            var,
-            function()
-                local opts = {}
-                for name in pairs(ThreatSenseDB.profiles) do
-                    table.insert(opts, { text = name, value = name })
-                end
-                return opts
-            end,
+            setting,
+            BuildProfileOptions(),
             role .. " Profile",
-            "Profile to use when playing as " .. role .. "."
+            "Profile to use when your role is " .. role .. "."
         )
+
+        setting:SetValueChangedCallback(function(value)
+            roleDB[role] = value
+            FireProfileChanged()
+        end)
     end
 
+    ------------------------------------------------------------
+    -- ROLE DETECTION PREVIEW
+    ------------------------------------------------------------
+    Header(layout, "Role Detection")
+
+    Settings.CreateControlButton(
+        layout,
+        "Detect Current Role",
+        "Show what role ThreatSense currently detects.",
+        function()
+            local role = TS.RoleManager:GetCurrentRole() or "UNKNOWN"
+            print("|cff00ff00ThreatSense|r detected role: " .. role)
+        end
+    )
+
+    ------------------------------------------------------------
+    -- REGISTER
+    ------------------------------------------------------------
     Settings.RegisterAddOnCategory(category)
 end
+
+return Roles

@@ -1,159 +1,168 @@
--- ThreatSense: WarningEngine.lua
--- Modern tank-aware threat warnings
+-- ThreatSense: WarningAnimations.lua
+-- Reusable animation system for warning UI
 
 local ADDON_NAME, TS = ...
-TS.WarningEngine = {}
-local Engine = TS.WarningEngine
 
--- Internal state
-Engine.activeWarnings = {}
-Engine.lastWarning = nil
+TS.WarningAnimations = TS.WarningAnimations or {}
+local Anim = TS.WarningAnimations
 
--- Default thresholds (will be configurable later)
-local THRESHOLDS = {
-    TANK = {
-        LOSING_AGGRO = 80,   -- someone at 80% of your threat
-        TAUNT = 0,           -- someone else is tanking (isTanking = false)
-    },
-    DPS = {
-        PULLING = 90,        -- 90% of tank threat
-        DROP = 95,           -- 95% of tank threat
-    },
-    HEALER = {
-        PULLING = 90,
-    }
+------------------------------------------------------------
+-- Internal: Create animation group for a frame
+------------------------------------------------------------
+local function EnsureAnimGroup(frame)
+    if frame._tsAnimGroup then
+        return frame._tsAnimGroup
+    end
+
+    local ag = frame:CreateAnimationGroup()
+    ag:SetLooping("NONE")
+    frame._tsAnimGroup = ag
+    return ag
+end
+
+------------------------------------------------------------
+-- Stop any running animation
+------------------------------------------------------------
+function Anim:Stop(frame)
+    if frame and frame._tsAnimGroup then
+        frame._tsAnimGroup:Stop()
+        frame:SetAlpha(1)
+        frame:SetScale(1)
+        frame:SetPoint(frame._tsOriginalPoint or "CENTER")
+    end
+end
+
+------------------------------------------------------------
+-- FLASH animation
+-- Quick alpha pulse
+------------------------------------------------------------
+local function PlayFlash(frame)
+    local ag = EnsureAnimGroup(frame)
+    ag:Stop()
+    ag:ReleaseAnimations()
+
+    local fadeOut = ag:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(1)
+    fadeOut:SetToAlpha(0.2)
+    fadeOut:SetDuration(0.2)
+    fadeOut:SetOrder(1)
+
+    local fadeIn = ag:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0.2)
+    fadeIn:SetToAlpha(1)
+    fadeIn:SetDuration(0.2)
+    fadeIn:SetOrder(2)
+
+    ag:SetLooping("REPEAT")
+    ag:Play()
+end
+
+------------------------------------------------------------
+-- PULSE animation
+-- Smooth scale up/down
+------------------------------------------------------------
+local function PlayPulse(frame)
+    local ag = EnsureAnimGroup(frame)
+    ag:Stop()
+    ag:ReleaseAnimations()
+
+    local grow = ag:CreateAnimation("Scale")
+    grow:SetScale(1.2, 1.2)
+    grow:SetDuration(0.25)
+    grow:SetOrder(1)
+
+    local shrink = ag:CreateAnimation("Scale")
+    shrink:SetScale(1/1.2, 1/1.2)
+    shrink:SetDuration(0.25)
+    shrink:SetOrder(2)
+
+    ag:SetLooping("REPEAT")
+    ag:Play()
+end
+
+------------------------------------------------------------
+-- SHAKE animation
+-- Horizontal shake effect
+------------------------------------------------------------
+local function PlayShake(frame)
+    local ag = EnsureAnimGroup(frame)
+    ag:Stop()
+    ag:ReleaseAnimations()
+
+    -- Save original point
+    if not frame._tsOriginalPoint then
+        local point, rel, relPoint, x, y = frame:GetPoint()
+        frame._tsOriginalPoint = { point, rel, relPoint, x, y }
+    end
+
+    local left = ag:CreateAnimation("Translation")
+    left:SetOffset(-10, 0)
+    left:SetDuration(0.05)
+    left:SetOrder(1)
+
+    local right = ag:CreateAnimation("Translation")
+    right:SetOffset(20, 0)
+    right:SetDuration(0.1)
+    right:SetOrder(2)
+
+    local center = ag:CreateAnimation("Translation")
+    center:SetOffset(-10, 0)
+    center:SetDuration(0.05)
+    center:SetOrder(3)
+
+    ag:SetLooping("REPEAT")
+    ag:Play()
+end
+
+------------------------------------------------------------
+-- FADE animation
+-- Slow fade in/out
+------------------------------------------------------------
+local function PlayFade(frame)
+    local ag = EnsureAnimGroup(frame)
+    ag:Stop()
+    ag:ReleaseAnimations()
+
+    local fadeOut = ag:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(1)
+    fadeOut:SetToAlpha(0.3)
+    fadeOut:SetDuration(0.5)
+    fadeOut:SetOrder(1)
+
+    local fadeIn = ag:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0.3)
+    fadeIn:SetToAlpha(1)
+    fadeIn:SetDuration(0.5)
+    fadeIn:SetOrder(2)
+
+    ag:SetLooping("REPEAT")
+    ag:Play()
+end
+
+------------------------------------------------------------
+-- Animation registry
+------------------------------------------------------------
+Anim.animations = {
+    FLASH = PlayFlash,
+    PULSE = PlayPulse,
+    SHAKE = PlayShake,
+    FADE  = PlayFade,
 }
 
 ------------------------------------------------------------
--- Initialize
+-- Play animation based on profile
 ------------------------------------------------------------
-function Engine:Initialize()
-    TS.Utils:Debug("WarningEngine initialized")
+function Anim:Play(frame, animType)
+    if not frame then return end
+    self:Stop(frame)
 
-    TS.EventBus:Register("THREAT_UPDATED", function(data)
-        self:EvaluateThreat(data)
-    end)
-end
-
-------------------------------------------------------------
--- Emit a warning
-------------------------------------------------------------
-function Engine:Trigger(type, payload)
-    payload = payload or {}
-    payload.type = type
-
-    -- Hybrid model:
-    -- Tanks: only one warning at a time
-    -- DPS: allow multiple
-    -- Healers: only one
-    local role = TS.Utils:GetPlayerRole()
-
-    if role == "TANK" or role == "HEALER" then
-        -- Clear previous warning if different
-        if self.lastWarning and self.lastWarning ~= type then
-            TS.EventBus:Emit("WARNING_CLEARED", { type = self.lastWarning })
-        end
-        self.lastWarning = type
-    end
-
-    -- Emit the new warning
-    TS.EventBus:Emit("WARNING_TRIGGERED", payload)
-end
-
-------------------------------------------------------------
--- Clear all warnings
-------------------------------------------------------------
-function Engine:ClearAll()
-    if self.lastWarning then
-        TS.EventBus:Emit("WARNING_CLEARED", { type = self.lastWarning })
-        self.lastWarning = nil
+    local fn = self.animations[animType]
+    if fn then
+        fn(frame)
+    else
+        -- Fallback to FLASH
+        PlayFlash(frame)
     end
 end
 
-------------------------------------------------------------
--- Main logic
-------------------------------------------------------------
-function Engine:EvaluateThreat(data)
-    local role = TS.Utils:GetPlayerRole()
-    local playerPct = data.playerThreatPct or 0
-    local isTanking = data.isTanking
-
-    -- No target or no threat → clear warnings
-    if not data.target or #data.threatList == 0 then
-        self:ClearAll()
-        return
-    end
-
-    ------------------------------------------------------------
-    -- TANK LOGIC
-    ------------------------------------------------------------
-    if role == "TANK" then
-        -- 1. Aggro lost
-        if not isTanking then
-            self:Trigger("AGGRO_LOST", { threatPct = playerPct })
-            return
-        end
-
-        -- 2. Losing aggro (someone close behind)
-        local second = data.threatList[2]
-        if second and second.threatPct >= THRESHOLDS.TANK.LOSING_AGGRO then
-            self:Trigger("LOSING_AGGRO", {
-                unit = second.unit,
-                threatPct = second.threatPct
-            })
-            return
-        end
-
-        -- 3. Taunt needed (someone else tanking)
-        local top = data.threatList[1]
-        if top and not top.isTanking then
-            self:Trigger("TAUNT", {
-                unit = top.unit,
-                threatPct = top.threatPct
-            })
-            return
-        end
-
-        -- No warnings
-        self:ClearAll()
-        return
-    end
-
-    ------------------------------------------------------------
-    -- DPS LOGIC
-    ------------------------------------------------------------
-    if role == "DAMAGER" then
-        local tankThreat = data.tankThreat or data.topThreat
-
-        -- Pulling aggro
-        if playerPct >= THRESHOLDS.DPS.PULLING then
-            self:Trigger("PULLING_AGGRO", { threatPct = playerPct })
-        end
-
-        -- Aggro pulled
-        if isTanking then
-            self:Trigger("AGGRO_PULLED", { threatPct = playerPct })
-        end
-
-        -- Drop threat
-        if playerPct >= THRESHOLDS.DPS.DROP then
-            self:Trigger("DROP_THREAT", { threatPct = playerPct })
-        end
-
-        return
-    end
-
-    ------------------------------------------------------------
-    -- HEALER LOGIC
-    ------------------------------------------------------------
-    if role == "HEALER" then
-        if playerPct >= THRESHOLDS.HEALER.PULLING then
-            self:Trigger("PULLING_AGGRO", { threatPct = playerPct })
-        else
-            self:ClearAll()
-        end
-        return
-    end
-end
-
-return Engine
+return Anim

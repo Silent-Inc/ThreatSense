@@ -1,30 +1,24 @@
 -- ThreatSense: Reset.lua
--- Reset active profile to defaults and reapply role-based defaults
+-- Modern profile reset (AceDB, ProfileManager 2.0, role-aware defaults)
 
 local ADDON_NAME, TS = ...
-local ConfigReset = {}
-TS.ConfigReset = ConfigReset
+local Reset = {}
+TS.Reset = Reset
 
 local PM = TS.ProfileManager
 local RM = TS.RoleManager
 
 ------------------------------------------------------------
--- Apply role-aware defaults to the active profile
+-- Role-aware default profiles (structured for TS.db.profile)
 ------------------------------------------------------------
-local function ApplyRoleDefaults()
-    local role = RM:GetRole()
-
-    local defaults = {
-        TANK = {
-            displayMode = "BAR_AND_LIST",
-            enableWarnings = true,
-            warningStyle = "ICON",
+local ROLE_DEFAULTS = {
+    TANK = {
+        display = {
+            mode = "BAR_AND_LIST",
             barTexture = "",
             backgroundTexture = "",
             font = "",
             fontSize = 12,
-            barColor = { r = 0.8, g = 0.1, b = 0.1, a = 1 },
-            threatGradient = true,
             barHeight = 18,
             barSpacing = 2,
             rowHeight = 16,
@@ -32,6 +26,11 @@ local function ApplyRoleDefaults()
             smoothSpeed = 0.2,
             combatFade = false,
             combatFadeOpacity = 0.4,
+            threatGradient = true,
+        },
+        warnings = {
+            enabled = true,
+            style = "ICON",
             warnTaunt = true,
             warnLosingAggro = true,
             warnAggroLost = true,
@@ -42,21 +41,28 @@ local function ApplyRoleDefaults()
             dpsPullingAggroThreshold = 90,
             dpsDropThreatThreshold = 95,
             healerPullingAggroThreshold = 90,
-            warningIconSize = 64,
-            warningSound = "",
-            warningVolume = 1,
+            iconSize = 64,
+            sound = "",
+            soundVolume = 1,
         },
+        colors = {
+            warnings = {
+                AGGRO_LOST = { r = 1, g = 0.2, b = 0.2, a = 1 },
+                TAUNT = { r = 1, g = 0.5, b = 0.1, a = 1 },
+                LOSING_AGGRO = { r = 1, g = 0.8, b = 0.1, a = 1 },
+                PULLING_AGGRO = { r = 1, g = 0.8, b = 0.1, a = 1 },
+                AGGRO_PULLED = { r = 1, g = 0.2, b = 0.2, a = 1 },
+            }
+        }
+    },
 
-        HEALER = {
-            displayMode = "LIST_ONLY",
-            enableWarnings = true,
-            warningStyle = "TEXT",
+    HEALER = {
+        display = {
+            mode = "LIST_ONLY",
             barTexture = "",
             backgroundTexture = "",
             font = "",
             fontSize = 12,
-            barColor = { r = 0.8, g = 0.1, b = 0.1, a = 1 },
-            threatGradient = true,
             barHeight = 18,
             barSpacing = 2,
             rowHeight = 16,
@@ -64,6 +70,11 @@ local function ApplyRoleDefaults()
             smoothSpeed = 0.2,
             combatFade = false,
             combatFadeOpacity = 0.4,
+            threatGradient = true,
+        },
+        warnings = {
+            enabled = true,
+            style = "TEXT",
             warnTaunt = false,
             warnLosingAggro = false,
             warnAggroLost = false,
@@ -74,21 +85,28 @@ local function ApplyRoleDefaults()
             dpsPullingAggroThreshold = 90,
             dpsDropThreatThreshold = 95,
             healerPullingAggroThreshold = 90,
-            warningIconSize = 64,
-            warningSound = "",
-            warningVolume = 1,
+            iconSize = 64,
+            sound = "",
+            soundVolume = 1,
         },
+        colors = {
+            warnings = {
+                AGGRO_LOST = { r = 1, g = 0.2, b = 0.2, a = 1 },
+                TAUNT = { r = 1, g = 0.5, b = 0.1, a = 1 },
+                LOSING_AGGRO = { r = 1, g = 0.8, b = 0.1, a = 1 },
+                PULLING_AGGRO = { r = 1, g = 0.8, b = 0.1, a = 1 },
+                AGGRO_PULLED = { r = 1, g = 0.2, b = 0.2, a = 1 },
+            }
+        }
+    },
 
-        DAMAGER = {
-            displayMode = "BAR_ONLY",
-            enableWarnings = true,
-            warningStyle = "ICON",
+    DPS = {
+        display = {
+            mode = "BAR_ONLY",
             barTexture = "",
             backgroundTexture = "",
             font = "",
             fontSize = 12,
-            barColor = { r = 0.8, g = 0.1, b = 0.1, a = 1 },
-            threatGradient = true,
             barHeight = 18,
             barSpacing = 2,
             rowHeight = 16,
@@ -96,6 +114,11 @@ local function ApplyRoleDefaults()
             smoothSpeed = 0.2,
             combatFade = false,
             combatFadeOpacity = 0.4,
+            threatGradient = true,
+        },
+        warnings = {
+            enabled = true,
+            style = "ICON",
             warnTaunt = false,
             warnLosingAggro = false,
             warnAggroLost = false,
@@ -106,17 +129,38 @@ local function ApplyRoleDefaults()
             dpsPullingAggroThreshold = 90,
             dpsDropThreatThreshold = 95,
             healerPullingAggroThreshold = 90,
-            warningIconSize = 64,
-            warningSound = "",
-            warningVolume = 1,
+            iconSize = 64,
+            sound = "",
+            soundVolume = 1,
+        },
+        colors = {
+            warnings = {
+                AGGRO_LOST = { r = 1, g = 0.2, b = 0.2, a = 1 },
+                TAUNT = { r = 1, g = 0.5, b = 0.1, a = 1 },
+                LOSING_AGGRO = { r = 1, g = 0.8, b = 0.1, a = 1 },
+                PULLING_AGGRO = { r = 1, g = 0.8, b = 0.1, a = 1 },
+                AGGRO_PULLED = { r = 1, g = 0.2, b = 0.2, a = 1 },
+            }
         }
     }
+}
 
-    local profile = PM:GetProfile()
-    local roleDefaults = defaults[role]
+------------------------------------------------------------
+-- Apply role defaults into the active profile
+------------------------------------------------------------
+local function ApplyRoleDefaults()
+    local role = RM:GetCurrentRole() or "DPS"
+    local defaults = ROLE_DEFAULTS[role]
+    if not defaults then return end
 
-    for key, value in pairs(roleDefaults) do
-        profile[key] = value
+    local profile = TS.db.profile
+
+    -- Deep copy defaults into profile
+    for section, values in pairs(defaults) do
+        profile[section] = profile[section] or {}
+        for key, value in pairs(values) do
+            profile[section][key] = value
+        end
     end
 end
 
@@ -124,25 +168,26 @@ end
 -- Reset active profile
 ------------------------------------------------------------
 local function ResetActiveProfile()
-    ApplyRoleDefaults()
+    TS.db:ResetProfile()      -- AceDB reset
+    ApplyRoleDefaults()       -- Apply role defaults
 
-    TS.EventBus:Emit("PROFILE_RESET")
-    TS.EventBus:Emit("PROFILE_CHANGED", PM:GetActiveProfileName())
+    TS.EventBus:Send("PROFILE_RESET")
+    TS.EventBus:Send("PROFILE_CHANGED")
 
     if TS.DisplayPreview:IsActive() then
         TS.DisplayPreview:Stop()
     end
-
     if TS.WarningPreview:IsActive() then
         TS.WarningPreview:Stop()
     end
 end
 
 ------------------------------------------------------------
--- Initialize the Reset Panel
+-- Initialize Reset Panel
 ------------------------------------------------------------
-function ConfigReset:Initialize()
-    local category, layout = Settings.RegisterVerticalLayoutCategory("ThreatSense - Reset")
+function Reset:Initialize()
+    local categoryName = TS.Categories.RESET or "ThreatSense - Reset"
+    local category, layout = Settings.RegisterVerticalLayoutCategory(categoryName)
     self.category = category
 
     Settings.CreateControlButton(
@@ -156,3 +201,5 @@ function ConfigReset:Initialize()
 
     Settings.RegisterAddOnCategory(category)
 end
+
+return Reset

@@ -1,34 +1,60 @@
 -- ThreatSense: DisplayPreview.lua
--- Preview system for ThreatBar + ThreatList
+-- Preview system for ThreatBar + ThreatList (ThreatEngine 2.0 aware)
 
 local ADDON_NAME, TS = ...
-local Preview = {}
-TS.DisplayPreview = Preview
 
-Preview.active = false
-Preview.timer = 0
+TS.DisplayPreview = TS.DisplayPreview or {}
+local Preview = TS.DisplayPreview
+
+Preview.active   = false
+Preview.timer    = 0
 Preview.interval = 1.0 -- update fake data every second
 
-------------------------------------------------------------
--- Fake threat generator
-------------------------------------------------------------
-local function GenerateFakeThreat()
-    return {
-        target = "Training Dummy",
-        playerThreat = math.random(10, 90),
-        playerThreatPct = math.random(10, 90),
-        isTanking = false,
-        tankThreat = 100,
-        topThreat = 100,
-        relativePct = math.random(10, 90),
+Preview._saved = {
+    threatEngineEnabled = nil,
+}
 
-        threatList = {
-            { name = "Warrior", class = "WARRIOR", threat = 92, threatPct = 92, isTanking = true },
-            { name = "Mage",    class = "MAGE",    threat = 68, threatPct = 68 },
-            { name = "Rogue",   class = "ROGUE",   threat = 55, threatPct = 55 },
-            { name = "Hunter",  class = "HUNTER",  threat = 43, threatPct = 43 },
-        }
+------------------------------------------------------------
+-- Fake threat generator (ThreatEngine 2.0 payload shape)
+------------------------------------------------------------
+local function GenerateFakePayload()
+    local list = {
+        { unit = "player", name = "You",     class = "WARRIOR", threatPct = math.random(40, 95), isTanking = true  },
+        { unit = "party1", name = "Mage",    class = "MAGE",    threatPct = math.random(20, 80), isTanking = false },
+        { unit = "party2", name = "Rogue",   class = "ROGUE",   threatPct = math.random(10, 70), isTanking = false },
+        { unit = "party3", name = "Hunter",  class = "HUNTER",  threatPct = math.random(10, 60), isTanking = false },
     }
+
+    local playerEntry = list[1]
+    local targetName  = "Training Dummy"
+
+    return {
+        threatPct = playerEntry.threatPct,
+        isTanking = playerEntry.isTanking,
+        role      = TS.RoleManager and TS.RoleManager:GetRole() or "TANK",
+        list      = list,
+        target    = targetName,
+        tankThreat = 100,
+        topThreat  = 100,
+    }
+end
+
+------------------------------------------------------------
+-- Push fake events into the system
+------------------------------------------------------------
+local function PushFakeThreat()
+    local payload = GenerateFakePayload()
+
+    -- Player threat update
+    TS.EventBus:Send("PLAYER_THREAT_UPDATED", payload)
+
+    -- Threat list update
+    TS.EventBus:Send("THREAT_LIST_UPDATED", { list = payload.list })
+
+    -- Target update
+    TS.EventBus:Send("THREAT_TARGET_UPDATED", {
+        name = payload.target,
+    })
 end
 
 ------------------------------------------------------------
@@ -37,16 +63,18 @@ end
 function Preview:Start()
     if self.active then return end
     self.active = true
-    self.timer = 0
+    self.timer  = 0
 
     TS.Utils:Debug("DisplayPreview: START")
 
-    -- Stop real threat updates
-    self._oldUpdate = TS.ThreatEngine.Update
-    TS.ThreatEngine.Update = function() end
+    -- Disable real ThreatEngine updates (if it exposes a toggle)
+    if TS.ThreatEngine and TS.ThreatEngine.SetEnabled then
+        self._saved.threatEngineEnabled = TS.ThreatEngine:IsEnabled()
+        TS.ThreatEngine:SetEnabled(false)
+    end
 
     -- Immediately push fake data
-    TS.EventBus:Emit("THREAT_UPDATED", GenerateFakeThreat())
+    PushFakeThreat()
 end
 
 ------------------------------------------------------------
@@ -58,14 +86,14 @@ function Preview:Stop()
 
     TS.Utils:Debug("DisplayPreview: STOP")
 
-    -- Restore real ThreatEngine
-    if self._oldUpdate then
-        TS.ThreatEngine.Update = self._oldUpdate
-        self._oldUpdate = nil
+    -- Re-enable ThreatEngine if we disabled it
+    if TS.ThreatEngine and TS.ThreatEngine.SetEnabled and self._saved.threatEngineEnabled ~= nil then
+        TS.ThreatEngine:SetEnabled(self._saved.threatEngineEnabled)
+        self._saved.threatEngineEnabled = nil
     end
 
-    -- Force UI to refresh with real data
-    TS.ThreatEngine:Update()
+    -- Emit a reset so UI can clear or resume real data
+    TS.EventBus:Send("THREAT_RESET")
 end
 
 ------------------------------------------------------------
@@ -78,14 +106,14 @@ end
 ------------------------------------------------------------
 -- Update loop (fake threat pulses)
 ------------------------------------------------------------
-local frame = CreateFrame("Frame")
+local frame = CreateFrame("Frame", "ThreatSense_DisplayPreviewFrame", UIParent)
 frame:SetScript("OnUpdate", function(_, elapsed)
     if not Preview.active then return end
 
     Preview.timer = Preview.timer + elapsed
     if Preview.timer >= Preview.interval then
         Preview.timer = 0
-        TS.EventBus:Emit("THREAT_UPDATED", GenerateFakeThreat())
+        PushFakeThreat()
     end
 end)
 
@@ -98,22 +126,33 @@ local function StopPreviewIfActive()
     end
 end
 
--- Stop preview on combat
 frame:RegisterEvent("PLAYER_REGEN_DISABLED")
-frame:SetScript("OnEvent", StopPreviewIfActive)
+frame:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        StopPreviewIfActive()
+    end
+end)
 
--- Stop preview when target changes
-TS.EventBus:Register("TARGET_CHANGED", StopPreviewIfActive)
+TS.EventBus:Register("TARGET_CHANGED", StopPreviewIfActive, {
+    namespace = "DisplayPreview",
+    source    = "DisplayPreview",
+})
 
--- Stop preview when TestMode starts
-TS.EventBus:Register("TEST_MODE_STARTED", StopPreviewIfActive)
+TS.EventBus:Register("TEST_MODE_STARTED", StopPreviewIfActive, {
+    namespace = "DisplayPreview",
+    source    = "DisplayPreview",
+})
 
--- Stop preview when DevMode overrides data
-TS.EventBus:Register("DEVMODE_OVERRIDE", StopPreviewIfActive)
+TS.EventBus:Register("DEVMODE_OVERRIDE", StopPreviewIfActive, {
+    namespace = "DisplayPreview",
+    source    = "DisplayPreview",
+})
 
 ------------------------------------------------------------
 -- Initialize
 ------------------------------------------------------------
 function Preview:Initialize()
-    TS.Utils:Debug("DisplayPreview initialized")
+    TS.Utils:Debug("DisplayPreview 2.0 initialized")
 end
+
+return Preview

@@ -1,30 +1,43 @@
--- ThreatSense: ConfigParent.lua
--- Root settings panel for the addon
+-- ThreatSense: Parent.lua
+-- Root settings panel for the addon (modernized)
 
 local ADDON_NAME, TS = ...
-local ConfigParent = {}
-TS.ConfigParent = ConfigParent
+local Parent = {}
+TS.Parent = Parent
 
 local VERSION = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "Unknown"
 local AUTHOR  = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Author") or "Unknown"
 
 ------------------------------------------------------------
+-- Central category registry (used by all config modules)
+------------------------------------------------------------
+TS.ConfigCategories = {
+    ROOT            = "ThreatSense",
+    DISPLAY         = "ThreatSense - Display",
+    DISPLAY_ADV     = "ThreatSense - Display (Advanced)",
+    WARNINGS        = "ThreatSense - Warnings",
+    WARNINGS_ADV    = "ThreatSense - Warnings (Advanced)",
+    ROLES           = "ThreatSense - Roles",
+    PROFILES        = "ThreatSense - Profiles",
+    MEDIA           = "ThreatSense - Media",
+    COLORS          = "ThreatSense - Colors",
+    FONTS           = "ThreatSense - Fonts",
+    TEXTURES        = "ThreatSense - Textures",
+    DEVELOPER       = "ThreatSense - Developer",
+}
+
+------------------------------------------------------------
 -- Helper: Create a navigation button
 ------------------------------------------------------------
 local function CreateNavButton(layout, text, description, callback)
-    Settings.CreateControlButton(
-        layout,
-        text,
-        description,
-        callback
-    )
+    Settings.CreateControlButton(layout, text, description, callback)
 end
 
 ------------------------------------------------------------
 -- Initialize the Parent Settings Panel
 ------------------------------------------------------------
-function ConfigParent:Initialize()
-    local category, layout = Settings.RegisterVerticalLayoutCategory("ThreatSense")
+function Parent:Initialize()
+    local category, layout = Settings.RegisterVerticalLayoutCategory(TS.ConfigCategories.ROOT)
     self.category = category
 
     ------------------------------------------------------------
@@ -41,65 +54,76 @@ function ConfigParent:Initialize()
     ------------------------------------------------------------
     -- Navigation Buttons
     ------------------------------------------------------------
-    CreateNavButton(
-        layout,
-        "Open Display Settings",
+    CreateNavButton(layout,
+        "Display Settings",
         "Configure threat bars, list, textures, fonts, and layout.",
-        function()
-            Settings.OpenToCategory("ThreatSense - Display")
-        end
+        function() Settings.OpenToCategory(TS.ConfigCategories.DISPLAY) end
     )
 
-    CreateNavButton(
-        layout,
-        "Open Advanced Display Settings",
+    CreateNavButton(layout,
+        "Advanced Display Settings",
         "Configure textures, fonts, colors, layout, and behavior.",
-        function()
-            Settings.OpenToCategory("ThreatSense - Display (Advanced)")
-        end
+        function() Settings.OpenToCategory(TS.ConfigCategories.DISPLAY_ADV) end
     )
 
-    CreateNavButton(
-        layout,
-        "Open Warning Settings",
+    CreateNavButton(layout,
+        "Warning Settings",
         "Configure warning types, thresholds, visuals, and sounds.",
-        function()
-            Settings.OpenToCategory("ThreatSense - Warnings")
-        end
+        function() Settings.OpenToCategory(TS.ConfigCategories.WARNINGS) end
     )
 
-    CreateNavButton(
-        layout,
-        "Open Advanced Warning Settings",
+    CreateNavButton(layout,
+        "Advanced Warning Settings",
         "Configure advanced warning visuals, thresholds, and audio.",
-        function()
-            Settings.OpenToCategory("ThreatSense - Warnings (Advanced)")
-        end
+        function() Settings.OpenToCategory(TS.ConfigCategories.WARNINGS_ADV) end
     )
 
-    CreateNavButton(
-        layout,
-        "Open Role Settings",
+    CreateNavButton(layout,
+        "Role Settings",
         "Configure role detection and optional auto-switch profiles.",
-        function()
-            Settings.OpenToCategory("ThreatSense - Roles")
-        end
+        function() Settings.OpenToCategory(TS.ConfigCategories.ROLES) end
     )
 
-    CreateNavButton(
-        layout,
-        "Open Profile Settings",
+    CreateNavButton(layout,
+        "Profile Settings",
         "Manage profiles: create, copy, delete, and switch.",
-        function()
-            Settings.OpenToCategory("ThreatSense - Profiles")
-        end
+        function() Settings.OpenToCategory(TS.ConfigCategories.PROFILES) end
+    )
+
+    CreateNavButton(layout,
+        "Media Settings",
+        "Configure fonts, textures, and shared media.",
+        function() Settings.OpenToCategory(TS.ConfigCategories.MEDIA) end
+    )
+
+    CreateNavButton(layout,
+        "Color Settings",
+        "Configure threat colors, role colors, and warning colors.",
+        function() Settings.OpenToCategory(TS.ConfigCategories.COLORS) end
+    )
+
+    CreateNavButton(layout,
+        "Font Settings",
+        "Configure fonts for all UI elements.",
+        function() Settings.OpenToCategory(TS.ConfigCategories.FONTS) end
+    )
+
+    CreateNavButton(layout,
+        "Texture Settings",
+        "Configure textures for bars and backgrounds.",
+        function() Settings.OpenToCategory(TS.ConfigCategories.TEXTURES) end
+    )
+
+    CreateNavButton(layout,
+        "Developer Tools",
+        "Debug tools, raw data views, and event logs.",
+        function() Settings.OpenToCategory(TS.ConfigCategories.DEVELOPER) end
     )
 
     ------------------------------------------------------------
     -- Preview Buttons
     ------------------------------------------------------------
-    CreateNavButton(
-        layout,
+    CreateNavButton(layout,
         "Preview Display",
         "Show a live preview of the threat display.",
         function()
@@ -111,15 +135,14 @@ function ConfigParent:Initialize()
         end
     )
 
-    CreateNavButton(
-        layout,
+    CreateNavButton(layout,
         "Preview Warnings",
         "Show a live preview of warning alerts.",
         function()
             if TS.WarningPreview:IsActive() then
                 TS.WarningPreview:Stop()
             else
-                TS.WarningPreview:Start()
+                TS.WarningPreview:StartRandom()
             end
         end
     )
@@ -127,12 +150,11 @@ function ConfigParent:Initialize()
     ------------------------------------------------------------
     -- Test Mode Button
     ------------------------------------------------------------
-    CreateNavButton(
-        layout,
+    CreateNavButton(layout,
         "Start Test Mode",
         "Simulate combat, threat, and warnings for full UI testing.",
         function()
-            TS.EventBus:Emit("TEST_MODE_STARTED")
+            TS.EventBus:Send("TEST_MODE_STARTED")
         end
     )
 
@@ -141,3 +163,5 @@ function ConfigParent:Initialize()
     ------------------------------------------------------------
     Settings.RegisterAddOnCategory(category)
 end
+
+return Parent

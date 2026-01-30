@@ -1,61 +1,57 @@
 -- ThreatSense: WarningsAdvanced.lua
--- Advanced warning configuration using the modern Settings API
+-- Advanced warning configuration (profile-aware, WarningEngine 2.0)
 
 local ADDON_NAME, TS = ...
-local ConfigWarningsAdvanced = {}
-TS.ConfigWarningsAdvanced = ConfigWarningsAdvanced
+local WarningsAdvanced = {}
+TS.WarningsAdvanced = WarningsAdvanced
 
-local PM = TS.ProfileManager
-local LSM = LibStub("LibSharedMedia-3.0")
+local LSM = LibStub("LibSharedMedia-3.0", true)
 
 ------------------------------------------------------------
--- Helper: Create a grouped header
+-- Helpers
 ------------------------------------------------------------
-local function CreateHeader(layout, text)
-    local header = layout:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    header:SetText(text)
-    header:SetPoint("TOPLEFT", 0, -12)
-    return header
+local function Header(layout, text)
+    local h = layout:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    h:SetText(text)
+    h:SetPoint("TOPLEFT", 0, -12)
+    return h
 end
 
-------------------------------------------------------------
--- Helper: Create a checkbox
-------------------------------------------------------------
-local function CreateCheckbox(layout, label, key, default, description)
+local function FireProfileChanged()
+    TS.EventBus:Send("PROFILE_CHANGED")
+    if TS.WarningPreview:IsActive() then
+        TS.WarningPreview:StartRandom()
+    end
+end
+
+local function Checkbox(layout, label, key, description)
+    local db = TS.db.profile.warnings
+
     local setting = Settings.RegisterAddOnSetting(
         layout:GetCategory(),
         label,
-        "ThreatSenseDB_" .. key,
+        nil,
         Settings.VarType.Boolean,
-        default
+        db[key]
     )
 
-    Settings.CreateCheckbox(
-        layout,
-        setting,
-        label,
-        description
-    )
+    Settings.CreateCheckbox(layout, setting, label, description)
 
     setting:SetValueChangedCallback(function(value)
-        PM:Set(key, value)
-        TS.EventBus:Emit("WARNING_SETTING_CHANGED", key, value)
-        if TS.WarningPreview:IsActive() then
-            TS.WarningPreview:Start()
-        end
+        db[key] = value
+        FireProfileChanged()
     end)
 end
 
-------------------------------------------------------------
--- Helper: Create a slider
-------------------------------------------------------------
-local function CreateSlider(layout, label, key, min, max, step, default, description)
+local function Slider(layout, label, key, min, max, step, description)
+    local db = TS.db.profile.warnings
+
     local setting = Settings.RegisterAddOnSetting(
         layout:GetCategory(),
         label,
-        "ThreatSenseDB_" .. key,
+        nil,
         Settings.VarType.Number,
-        default
+        db[key]
     )
 
     Settings.CreateSlider(
@@ -69,182 +65,128 @@ local function CreateSlider(layout, label, key, min, max, step, default, descrip
     )
 
     setting:SetValueChangedCallback(function(value)
-        PM:Set(key, value)
-        TS.EventBus:Emit("WARNING_SETTING_CHANGED", key, value)
-        if TS.WarningPreview:IsActive() then
-            TS.WarningPreview:Start()
-        end
+        db[key] = value
+        FireProfileChanged()
     end)
 end
 
-------------------------------------------------------------
--- Helper: Create a dropdown (LSM)
-------------------------------------------------------------
-local function CreateLSMDropdown(layout, label, key, mediaType, description)
+local function ColorPicker(layout, label, key, default)
+    local db = TS.db.profile.colors.warnings
+
     local setting = Settings.RegisterAddOnSetting(
         layout:GetCategory(),
         label,
-        "ThreatSenseDB_" .. key,
+        nil,
+        Settings.VarType.Color,
+        db[key] or default
+    )
+
+    Settings.CreateColorPicker(layout, setting, label, "Adjust this warning color.")
+
+    setting:SetValueChangedCallback(function(value)
+        db[key] = value
+        FireProfileChanged()
+    end)
+end
+
+local function LSMDropdown(layout, label, key, mediaType, description)
+    local db = TS.db.profile.warnings
+
+    local setting = Settings.RegisterAddOnSetting(
+        layout:GetCategory(),
+        label,
+        nil,
         Settings.VarType.String,
-        ""
+        db[key]
     )
 
     local function BuildOptions()
         local opts = {}
-        for _, name in ipairs(LSM:List(mediaType)) do
-            table.insert(opts, { text = name, value = name })
+        if LSM then
+            for _, name in ipairs(LSM:List(mediaType)) do
+                table.insert(opts, { text = name, value = name })
+            end
         end
         return opts
     end
 
-    Settings.CreateDropdown(
-        layout,
-        setting,
-        BuildOptions(),
-        label,
-        description
-    )
+    Settings.CreateDropdown(layout, setting, BuildOptions(), label, description)
 
     setting:SetValueChangedCallback(function(value)
-        PM:Set(key, value)
-        TS.EventBus:Emit("WARNING_SETTING_CHANGED", key, value)
-        if TS.WarningPreview:IsActive() then
-            TS.WarningPreview:Start()
-        end
+        db[key] = value
+        FireProfileChanged()
     end)
 end
 
 ------------------------------------------------------------
--- Initialize the Advanced Warnings Panel
+-- Initialize
 ------------------------------------------------------------
-function ConfigWarningsAdvanced:Initialize()
-    local category, layout = Settings.RegisterVerticalLayoutCategory("ThreatSense - Warnings (Advanced)")
+function WarningsAdvanced:Initialize()
+    local categoryName = TS.Categories.WARNINGS_ADV
+    local category, layout = Settings.RegisterVerticalLayoutCategory(categoryName)
     self.category = category
 
-    ------------------------------------------------------------
-    -- Section: Warning Types
-    ------------------------------------------------------------
-    CreateHeader(layout, "Warning Types")
-
-    CreateCheckbox(
-        layout,
-        "Taunt Warning",
-        "warnTaunt",
-        true,
-        "Show a warning when another player is tanking your target."
-    )
-
-    CreateCheckbox(
-        layout,
-        "Losing Aggro Warning",
-        "warnLosingAggro",
-        true,
-        "Show a warning when another player is close to overtaking your threat."
-    )
-
-    CreateCheckbox(
-        layout,
-        "Aggro Lost Warning",
-        "warnAggroLost",
-        true,
-        "Show a warning when you lose aggro on your target."
-    )
-
-    CreateCheckbox(
-        layout,
-        "Pulling Aggro Warning",
-        "warnPullingAggro",
-        true,
-        "Show a warning when you are close to pulling aggro."
-    )
-
-    CreateCheckbox(
-        layout,
-        "Aggro Pulled Warning",
-        "warnAggroPulled",
-        true,
-        "Show a warning when you pull aggro."
-    )
-
-    CreateCheckbox(
-        layout,
-        "Drop Threat Warning",
-        "warnDropThreat",
-        true,
-        "Show a warning when you should reduce threat."
-    )
+    local db = TS.db.profile.warnings
 
     ------------------------------------------------------------
-    -- Section: Thresholds
+    -- WARNING TYPES
     ------------------------------------------------------------
-    CreateHeader(layout, "Thresholds")
+    Header(layout, "Warning Types")
 
-    CreateSlider(
-        layout,
-        "Tank: Losing Aggro %",
-        "tankLosingAggroThreshold",
-        50,
-        100,
-        1,
-        80,
-        "Show a warning when another player reaches this percentage of your threat."
-    )
+    Checkbox(layout, "Taunt Warning", "warnTaunt",
+        "Show a warning when another player is tanking your target.")
 
-    CreateSlider(
-        layout,
-        "DPS: Pulling Aggro %",
-        "dpsPullingAggroThreshold",
-        50,
-        100,
-        1,
-        90,
-        "Show a warning when you reach this percentage of the tank's threat."
-    )
+    Checkbox(layout, "Losing Aggro Warning", "warnLosingAggro",
+        "Show a warning when another player is close to overtaking your threat.")
 
-    CreateSlider(
-        layout,
-        "DPS: Drop Threat %",
-        "dpsDropThreatThreshold",
-        50,
-        100,
-        1,
-        95,
-        "Show a warning when you should reduce threat."
-    )
+    Checkbox(layout, "Aggro Lost Warning", "warnAggroLost",
+        "Show a warning when you lose aggro on your target.")
 
-    CreateSlider(
-        layout,
-        "Healer: Pulling Aggro %",
-        "healerPullingAggroThreshold",
-        50,
-        100,
-        1,
-        90,
-        "Show a warning when you reach this percentage of the tank's threat."
-    )
+    Checkbox(layout, "Pulling Aggro Warning", "warnPullingAggro",
+        "Show a warning when you are close to pulling aggro.")
+
+    Checkbox(layout, "Aggro Pulled Warning", "warnAggroPulled",
+        "Show a warning when you pull aggro.")
+
+    Checkbox(layout, "Drop Threat Warning", "warnDropThreat",
+        "Show a warning when you should reduce threat.")
 
     ------------------------------------------------------------
-    -- Section: Visuals
+    -- THRESHOLDS
     ------------------------------------------------------------
-    CreateHeader(layout, "Visuals")
+    Header(layout, "Thresholds")
 
-    CreateSlider(
-        layout,
-        "Icon Size",
-        "warningIconSize",
-        16,
-        128,
-        1,
-        64,
-        "Adjust the size of the warning icon."
-    )
+    Slider(layout, "Tank: Losing Aggro %", "tankLosingAggroThreshold",
+        50, 100, 1,
+        "Show a warning when another player reaches this percentage of your threat.")
+
+    Slider(layout, "DPS: Pulling Aggro %", "dpsPullingAggroThreshold",
+        50, 100, 1,
+        "Show a warning when you reach this percentage of the tank's threat.")
+
+    Slider(layout, "DPS: Drop Threat %", "dpsDropThreatThreshold",
+        50, 100, 1,
+        "Show a warning when you should reduce threat.")
+
+    Slider(layout, "Healer: Pulling Aggro %", "healerPullingAggroThreshold",
+        50, 100, 1,
+        "Show a warning when you reach this percentage of the tank's threat.")
+
+    ------------------------------------------------------------
+    -- VISUALS
+    ------------------------------------------------------------
+    Header(layout, "Visuals")
+
+    Slider(layout, "Icon Size", "warningIconSize",
+        16, 128, 1,
+        "Adjust the size of the warning icon.")
 
     local styleSetting = Settings.RegisterAddOnSetting(
         category,
-        "Warning Style",
-        "ThreatSenseDB_warningStyle",
+        "WarningStyle",
+        nil,
         Settings.VarType.String,
-        "ICON"
+        db.style
     )
 
     local styleOptions = {
@@ -262,44 +204,29 @@ function ConfigWarningsAdvanced:Initialize()
     )
 
     styleSetting:SetValueChangedCallback(function(value)
-        PM:Set("warningStyle", value)
-        TS.EventBus:Emit("WARNING_SETTING_CHANGED", "warningStyle", value)
-        if TS.WarningPreview:IsActive() then
-            TS.WarningPreview:Start()
-        end
+        db.style = value
+        FireProfileChanged()
     end)
 
     ------------------------------------------------------------
-    -- Section: Audio
+    -- AUDIO
     ------------------------------------------------------------
-    CreateHeader(layout, "Audio")
+    Header(layout, "Audio")
 
-    CreateLSMDropdown(
-        layout,
-        "Warning Sound",
-        "warningSound",
-        "sound",
-        "Select a sound to play when a warning triggers."
-    )
+    LSMDropdown(layout, "Warning Sound", "sound", "sound",
+        "Select a sound to play when a warning triggers.")
 
-    CreateSlider(
-        layout,
-        "Sound Volume",
-        "warningVolume",
-        0,
-        1,
-        0.05,
-        1,
-        "Adjust the volume of warning sounds."
-    )
+    Slider(layout, "Sound Volume", "soundVolume",
+        0, 1, 0.05,
+        "Adjust the volume of warning sounds.")
 
     Settings.CreateControlButton(
         layout,
         "Test Sound",
         "Play the selected warning sound.",
         function()
-            local sound = PM:Get("warningSound", "")
-            if sound and sound ~= "" then
+            local sound = db.sound
+            if sound and sound ~= "" and LSM then
                 local path = LSM:Fetch("sound", sound)
                 if path then
                     PlaySoundFile(path, "Master")
@@ -309,25 +236,74 @@ function ConfigWarningsAdvanced:Initialize()
     )
 
     ------------------------------------------------------------
-    -- Section: Preview
+    -- WARNING COLORS
     ------------------------------------------------------------
-    CreateHeader(layout, "Preview")
+    Header(layout, "Warning Colors")
+
+    ColorPicker(layout, "Aggro Lost", "AGGRO_LOST",
+        { r = 1, g = 0.2, b = 0.2, a = 1 })
+
+    ColorPicker(layout, "Taunt Needed", "TAUNT",
+        { r = 1, g = 0.5, b = 0.1, a = 1 })
+
+    ColorPicker(layout, "Losing Aggro", "LOSING_AGGRO",
+        { r = 1, g = 0.8, b = 0.1, a = 1 })
+
+    ColorPicker(layout, "Pulling Aggro", "PULLING_AGGRO",
+        { r = 1, g = 0.8, b = 0.1, a = 1 })
+
+    ColorPicker(layout, "Aggro Pulled", "AGGRO_PULLED",
+        { r = 1, g = 0.2, b = 0.2, a = 1 })
+
+    ------------------------------------------------------------
+    -- PREVIEW
+    ------------------------------------------------------------
+    Header(layout, "Preview")
 
     Settings.CreateControlButton(
         layout,
-        "Preview Warning",
-        "Show a live preview of warning alerts.",
+        "Preview Random Warning",
+        "Show a random warning scenario.",
         function()
             if TS.WarningPreview:IsActive() then
                 TS.WarningPreview:Stop()
             else
-                TS.WarningPreview:Start()
+                TS.WarningPreview:StartRandom()
             end
         end
     )
 
+    Settings.CreateControlButton(
+        layout,
+        "Preview: Tank Losing Aggro",
+        "Simulate a tank losing aggro.",
+        function()
+            TS.WarningPreview:StartScenario("TANK_LOSING")
+        end
+    )
+
+    Settings.CreateControlButton(
+        layout,
+        "Preview: DPS Pulling",
+        "Simulate a DPS pulling threat.",
+        function()
+            TS.WarningPreview:StartScenario("DPS_PULLING")
+        end
+    )
+
+    Settings.CreateControlButton(
+        layout,
+        "Stop Preview",
+        "Stop all warning previews.",
+        function()
+            TS.WarningPreview:Stop()
+        end
+    )
+
     ------------------------------------------------------------
-    -- Register Category
+    -- Register
     ------------------------------------------------------------
     Settings.RegisterAddOnCategory(category)
 end
+
+return WarningsAdvanced

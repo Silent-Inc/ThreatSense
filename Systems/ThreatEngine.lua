@@ -1,18 +1,32 @@
 -- ThreatSense: ThreatEngine.lua
--- Core threat collection and tracking (event-driven, multi-unit aware)
+-- Core threat collection and tracking (event-driven, multi-unit, ThreatMath 2.0 aware)
 
 local ADDON_NAME, TS = ...
-
 TS.ThreatEngine = TS.ThreatEngine or {}
 local Engine = TS.ThreatEngine
+
+local Math = TS.ThreatMath
 
 ------------------------------------------------------------
 -- Internal state
 ------------------------------------------------------------
-Engine.currentTarget = nil      -- unit id ("target" or "focus")
-Engine.currentTargetName = nil  -- string
-Engine.threatByUnit = {}        -- [unit] = threatData
-Engine.threatList = {}          -- sorted list of threat entries
+Engine.state = {
+    targetUnit       = nil,
+    targetName       = nil,
+    byUnit           = {},   -- [unit] = entry
+    list             = {},   -- sorted entries
+    topThreat        = 0,
+    tankThreat       = 0,
+    secondThreat     = 0,
+    tankUnit         = nil,
+    player = {
+        threat       = 0,
+        threatPct    = 0,
+        isTanking    = false,
+        relToTank    = 0,
+        category     = "SAFE",
+    },
+}
 
 ------------------------------------------------------------
 -- Helpers
@@ -33,6 +47,23 @@ local function GetPrimaryTarget()
     return nil
 end
 
+local function ClearState()
+    local s = Engine.state
+    s.targetUnit    = nil
+    s.targetName    = nil
+    s.byUnit        = {}
+    s.list          = {}
+    s.topThreat     = 0
+    s.tankThreat    = 0
+    s.secondThreat  = 0
+    s.tankUnit      = nil
+    s.player.threat    = 0
+    s.player.threatPct = 0
+    s.player.isTanking = false
+    s.player.relToTank = 0
+    s.player.category  = "SAFE"
+end
+
 ------------------------------------------------------------
 -- Core update
 ------------------------------------------------------------
@@ -45,8 +76,10 @@ function Engine:Update()
     end
 
     local targetName = UnitName(target)
-    self.currentTarget = target
-    self.currentTargetName = targetName
+    local s = self.state
+
+    s.targetUnit = target
+    s.targetName = targetName
 
     self:UpdateThreatForTarget(target)
 end
@@ -57,12 +90,17 @@ function Engine:UpdateThreatForTarget(target)
     end
 
     local units = TS.GroupManager:GetUnits()
-    local threatByUnit = {}
-    local threatList = {}
+    local s = self.state
 
-    local topThreat = 0
-    local tankThreat = 0
-    local playerThreat = 0
+    local byUnit = {}
+    local list   = {}
+    local threatTable = {}
+
+    local topThreat   = 0
+    local tankThreat  = 0
+    local tankUnit    = nil
+
+    local playerThreat    = 0
     local playerThreatPct = 0
     local playerIsTanking = false
 
@@ -73,16 +111,17 @@ function Engine:UpdateThreatForTarget(target)
             local _, class = UnitClass(unit)
 
             local entry = {
-                unit       = unit,
-                name       = name,
-                class      = class,
-                threat     = threatData.threatValue,
-                threatPct  = threatData.threatPct,
-                isTanking  = threatData.isTanking,
+                unit      = unit,
+                name      = name,
+                class     = class,
+                threat    = threatData.threatValue,
+                threatPct = threatData.threatPct,
+                isTanking = threatData.isTanking,
             }
 
-            threatByUnit[unit] = entry
-            table.insert(threatList, entry)
+            byUnit[unit] = entry
+            table.insert(list, entry)
+            threatTable[unit] = threatData.threatValue
 
             if threatData.threatValue > topThreat then
                 topThreat = threatData.threatValue
@@ -90,27 +129,42 @@ function Engine:UpdateThreatForTarget(target)
 
             if threatData.isTanking and threatData.threatValue > tankThreat then
                 tankThreat = threatData.threatValue
+                tankUnit   = unit
             end
 
             if unit == "player" then
-                playerThreat = threatData.threatValue
+                playerThreat    = threatData.threatValue
                 playerThreatPct = threatData.threatPct
                 playerIsTanking = threatData.isTanking
             end
         end
     end
 
-    table.sort(threatList, function(a, b)
+    table.sort(list, function(a, b)
         return a.threat > b.threat
     end)
 
-    self.threatByUnit = threatByUnit
-    self.threatList = threatList
-    self.topThreat = topThreat
-    self.tankThreat = tankThreat
-    self.playerThreat = playerThreat
-    self.playerThreatPct = playerThreatPct
-    self.playerIsTanking = playerIsTanking
+    local highest, second = Math:GetTopTwoThreats(threatTable)
+
+    s.byUnit       = byUnit
+    s.list         = list
+    s.topThreat    = highest
+    s.tankThreat   = tankThreat
+    s.secondThreat = second
+    s.tankUnit     = tankUnit
+
+    s.player.threat    = playerThreat
+    s.player.threatPct = playerThreatPct
+    s.player.isTanking = playerIsTanking
+
+    -- Role-agnostic relative threat (player vs tank)
+    if tankThreat > 0 and playerThreat > 0 then
+        s.player.relToTank = Math:GetRelativeThreat(playerThreat, tankThreat)
+    else
+        s.player.relToTank = 0
+    end
+
+    s.player.category = Math:GetThreatCategory(s.player.relToTank)
 
     self:EmitThreatEvents()
 end
@@ -123,21 +177,45 @@ function Engine:EmitThreatEvents()
         return
     end
 
+    local s = self.state
+
+    -- Rich snapshot for modern consumers
+    TS.EventBus:Send("THREAT_SNAPSHOT_UPDATED", {
+        targetUnit   = s.targetUnit,
+        targetName   = s.targetName,
+        list         = s.list,
+        byUnit       = s.byUnit,
+        topThreat    = s.topThreat,
+        tankThreat   = s.tankThreat,
+        secondThreat = s.secondThreat,
+        tankUnit     = s.tankUnit,
+        player       = {
+            threat    = s.player.threat,
+            threatPct = s.player.threatPct,
+            isTanking = s.player.isTanking,
+            relToTank = s.player.relToTank,
+            category  = s.player.category,
+        },
+    })
+
+    -- Backwards-compatible events
     TS.EventBus:Send("THREAT_TARGET_UPDATED", {
-        unit = self.currentTarget,
-        name = self.currentTargetName,
+        unit = s.targetUnit,
+        name = s.targetName,
     })
 
     TS.EventBus:Send("THREAT_LIST_UPDATED", {
-        list = self.threatList,
-        topThreat = self.topThreat,
-        tankThreat = self.tankThreat,
+        list      = s.list,
+        topThreat = s.topThreat,
+        tankThreat = s.tankThreat,
     })
 
     TS.EventBus:Send("PLAYER_THREAT_UPDATED", {
-        threat = self.playerThreat,
-        threatPct = self.playerThreatPct,
-        isTanking = self.playerIsTanking,
+        threat     = s.player.threat,
+        threatPct  = s.player.threatPct,
+        isTanking  = s.player.isTanking,
+        relToTank  = s.player.relToTank,
+        category   = s.player.category,
     })
 end
 
@@ -145,34 +223,32 @@ end
 -- Public API
 ------------------------------------------------------------
 function Engine:GetCurrentTarget()
-    return self.currentTarget, self.currentTargetName
+    local s = self.state
+    return s.targetUnit, s.targetName
 end
 
 function Engine:GetThreatList()
-    return self.threatList
+    return self.state.list
 end
 
 function Engine:GetThreatForUnit(unit)
-    return self.threatByUnit[unit]
+    return self.state.byUnit[unit]
 end
 
 function Engine:GetPlayerThreat()
-    return self.playerThreat, self.playerThreatPct, self.playerIsTanking
+    local p = self.state.player
+    return p.threat, p.threatPct, p.isTanking, p.relToTank, p.category
+end
+
+function Engine:GetSnapshot()
+    return self.state
 end
 
 ------------------------------------------------------------
 -- Reset state
 ------------------------------------------------------------
 function Engine:Reset()
-    self.currentTarget = nil
-    self.currentTargetName = nil
-    self.threatByUnit = {}
-    self.threatList = {}
-    self.topThreat = 0
-    self.tankThreat = 0
-    self.playerThreat = 0
-    self.playerThreatPct = 0
-    self.playerIsTanking = false
+    ClearState()
 
     if TS.EventBus and TS.EventBus.Send then
         TS.EventBus:Send("THREAT_RESET")
@@ -200,3 +276,5 @@ function Engine:Initialize()
         end)
     end
 end
+
+return Engine

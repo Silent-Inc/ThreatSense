@@ -1,10 +1,12 @@
 -- ThreatSense: WarningEngine.lua
--- Modern, role-aware, profile-driven threat warning system
+-- Modern, snapshot-driven, role-aware threat warning system
 
 local ADDON_NAME, TS = ...
 
 TS.WarningEngine = TS.WarningEngine or {}
 local Engine = TS.WarningEngine
+
+local Math = TS.ThreatMath
 
 ------------------------------------------------------------
 -- Internal state
@@ -23,7 +25,6 @@ Engine.cooldownDefaults = {
 ------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------
-
 local function Now()
     return GetTime()
 end
@@ -56,7 +57,6 @@ end
 local function GetThresholdsForRole(role)
     local profile = GetWarningProfile()
     if not profile or not profile.thresholds then
-        -- Fallback defaults if profile not yet configured
         return {
             tank = {
                 losingAggro = 80,
@@ -75,9 +75,9 @@ local function GetThresholdsForRole(role)
     end
 
     local t = profile.thresholds
-    return profile.thresholds, role == "TANK" and "tank"
-                              or role == "HEALER" and "healer"
-                              or "dps"
+    return t, role == "TANK" and "tank"
+             or role == "HEALER" and "healer"
+             or "dps"
 end
 
 local function GetSoundsProfile()
@@ -86,10 +86,6 @@ local function GetSoundsProfile()
     end
     return nil
 end
-
-------------------------------------------------------------
--- Event emission helpers
-------------------------------------------------------------
 
 function Engine:Emit(event, payload)
     if TS.EventBus and TS.EventBus.Send then
@@ -100,7 +96,6 @@ end
 ------------------------------------------------------------
 -- Warning triggering
 ------------------------------------------------------------
-
 function Engine:Trigger(type, payload)
     payload = payload or {}
     payload.type = type
@@ -111,7 +106,6 @@ function Engine:Trigger(type, payload)
 
     local role = GetRole()
 
-    -- Tanks/Healers: only one active warning at a time
     if role == "TANK" or role == "HEALER" then
         if self.lastWarning and self.lastWarning ~= type then
             self:Emit("WARNING_CLEARED", { type = self.lastWarning })
@@ -121,15 +115,13 @@ function Engine:Trigger(type, payload)
 
     StartCooldown(type)
 
-    -- Emit generic warning event
     self:Emit("WARNING_TRIGGERED", payload)
 
-    -- Emit sound event (UI or sound system can handle it)
     local sounds = GetSoundsProfile()
     if sounds and sounds[type] and sounds[type].enabled then
         self:Emit("WARNING_SOUND", {
             type = type,
-            sound = sounds[type].mediaKey, -- LibSharedMedia key
+            sound = sounds[type].mediaKey,
         })
     end
 end
@@ -142,22 +134,25 @@ function Engine:ClearAll()
 end
 
 ------------------------------------------------------------
--- Core evaluation logic
--- Called when threat updates
+-- Core evaluation logic (snapshot-driven)
 ------------------------------------------------------------
-
-function Engine:EvaluateFromThreatState(threatState)
+function Engine:EvaluateFromSnapshot(s)
     local role = GetRole()
     local thresholds, key = GetThresholdsForRole(role)
 
-    local playerThreat = threatState.playerThreat or 0
-    local playerThreatPct = threatState.playerThreatPct or 0
-    local playerIsTanking = threatState.playerIsTanking or false
-    local topThreat = threatState.topThreat or 0
-    local tankThreat = threatState.tankThreat or topThreat
-    local list = threatState.threatList or {}
+    local player = s.player or {}
+    local list   = s.list or {}
 
-    if not threatState.targetName or #list == 0 then
+    local playerThreat    = player.threat or 0
+    local playerThreatPct = player.threatPct or 0
+    local playerIsTanking = player.isTanking or false
+    local relToTank       = player.relToTank or 0
+
+    local topThreat   = s.topThreat or 0
+    local tankThreat  = s.tankThreat or topThreat
+    local secondThreat = s.secondThreat or 0
+
+    if not s.targetName or #list == 0 then
         self:ClearAll()
         return
     end
@@ -168,36 +163,33 @@ function Engine:EvaluateFromThreatState(threatState)
     if role == "TANK" then
         local t = thresholds[key]
 
-        -- 1. Aggro lost
         if not playerIsTanking then
             self:Trigger("AGGRO_LOST", {
                 threatPct = playerThreatPct,
-                target = threatState.targetName,
+                target    = s.targetName,
             })
             return
         end
 
-        -- 2. Losing aggro (second highest close behind)
-        local second = list[2]
-        if second and second.threat > 0 then
-            local rel = TS.ThreatMath:GetTankRelativeThreat(playerThreat, second.threat)
-            if rel <= (t.losingAggro or 80) then
+        if secondThreat > 0 then
+            local losing, rel = Math:IsLosingAggro(playerThreat, secondThreat, t.losingAggro or 80)
+            if losing then
+                local second = list[2]
                 self:Trigger("LOSING_AGGRO", {
-                    unit = second.unit,
-                    name = second.name,
-                    threatPct = second.threatPct,
-                    relative = rel,
+                    unit      = second and second.unit or nil,
+                    name      = second and second.name or nil,
+                    threatPct = second and second.threatPct or 0,
+                    relative  = rel,
                 })
                 return
             end
         end
 
-        -- 3. Taunt suggestion (someone else tanking)
         local top = list[1]
         if top and not top.isTanking and top.unit ~= "player" then
             self:Trigger("TAUNT", {
-                unit = top.unit,
-                name = top.name,
+                unit      = top.unit,
+                name      = top.name,
                 threatPct = top.threatPct,
             })
             return
@@ -212,33 +204,30 @@ function Engine:EvaluateFromThreatState(threatState)
     --------------------------------------------------------
     if role == "DAMAGER" then
         local t = thresholds[key]
-        local refThreat = tankThreat > 0 and tankThreat or topThreat
-        local rel = TS.ThreatMath:GetRelativeThreat(playerThreat, refThreat)
+        local pullingThreshold = t.pulling or 90
+        local dropThreshold    = t.drop or 95
 
-        -- Pulling aggro
-        if rel >= (t.pulling or 90) then
+        if relToTank >= pullingThreshold then
             self:Trigger("PULLING_AGGRO", {
                 threatPct = playerThreatPct,
-                relative = rel,
-                target = threatState.targetName,
+                relative  = relToTank,
+                target    = s.targetName,
             })
         end
 
-        -- Aggro pulled
         if playerIsTanking then
             self:Trigger("AGGRO_PULLED", {
                 threatPct = playerThreatPct,
-                relative = rel,
-                target = threatState.targetName,
+                relative  = relToTank,
+                target    = s.targetName,
             })
         end
 
-        -- Drop threat suggestion
-        if rel >= (t.drop or 95) then
+        if relToTank >= dropThreshold then
             self:Trigger("DROP_THREAT", {
                 threatPct = playerThreatPct,
-                relative = rel,
-                target = threatState.targetName,
+                relative  = relToTank,
+                target    = s.targetName,
             })
         end
 
@@ -250,14 +239,13 @@ function Engine:EvaluateFromThreatState(threatState)
     --------------------------------------------------------
     if role == "HEALER" then
         local t = thresholds[key]
-        local refThreat = tankThreat > 0 and tankThreat or topThreat
-        local rel = TS.ThreatMath:GetRelativeThreat(playerThreat, refThreat)
+        local pullingThreshold = t.pulling or 90
 
-        if rel >= (t.pulling or 90) then
+        if relToTank >= pullingThreshold then
             self:Trigger("PULLING_AGGRO", {
                 threatPct = playerThreatPct,
-                relative = rel,
-                target = threatState.targetName,
+                relative  = relToTank,
+                target    = s.targetName,
             })
         else
             self:ClearAll()
@@ -268,26 +256,10 @@ function Engine:EvaluateFromThreatState(threatState)
 end
 
 ------------------------------------------------------------
--- Event wiring to ThreatEngine
+-- Event wiring to ThreatEngine 2.0
 ------------------------------------------------------------
-
-function Engine:OnThreatListUpdated(payload)
-    -- payload: { list, topThreat, tankThreat }
-    local targetUnit, targetName = TS.ThreatEngine:GetCurrentTarget()
-    local playerThreat, playerThreatPct, playerIsTanking = TS.ThreatEngine:GetPlayerThreat()
-
-    local state = {
-        targetUnit       = targetUnit,
-        targetName       = targetName,
-        threatList       = payload.list,
-        topThreat        = payload.topThreat,
-        tankThreat       = payload.tankThreat,
-        playerThreat     = playerThreat,
-        playerThreatPct  = playerThreatPct,
-        playerIsTanking  = playerIsTanking,
-    }
-
-    self:EvaluateFromThreatState(state)
+function Engine:OnThreatSnapshotUpdated(snapshot)
+    self:EvaluateFromSnapshot(snapshot)
 end
 
 function Engine:OnThreatReset()
@@ -297,22 +269,19 @@ end
 ------------------------------------------------------------
 -- Preview support
 ------------------------------------------------------------
-
 function Engine:Preview(type)
-    -- For config panels: simulate a warning
     self:Trigger(type, { preview = true })
 end
 
 ------------------------------------------------------------
 -- Initialize
 ------------------------------------------------------------
-
 function Engine:Initialize()
-    TS.Utils:Debug("WarningEngine 2.0 initialized")
+    TS.Utils:Debug("WarningEngine 2.0 (snapshot-driven) initialized")
 
     if TS.EventBus and TS.EventBus.Register then
-        TS.EventBus:Register("THREAT_LIST_UPDATED", function(payload)
-            self:OnThreatListUpdated(payload)
+        TS.EventBus:Register("THREAT_SNAPSHOT_UPDATED", function(payload)
+            self:OnThreatSnapshotUpdated(payload)
         end)
 
         TS.EventBus:Register("THREAT_RESET", function()
@@ -320,3 +289,5 @@ function Engine:Initialize()
         end)
     end
 end
+
+return Engine

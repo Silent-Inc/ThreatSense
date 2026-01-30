@@ -1,61 +1,45 @@
 -- ThreatSense: DisplayAdvanced.lua
--- Advanced display configuration using the modern Settings API
+-- Advanced display configuration (profile-aware, DisplayMode 2.0)
 
 local ADDON_NAME, TS = ...
-local ConfigDisplayAdvanced = {}
-TS.ConfigDisplayAdvanced = ConfigDisplayAdvanced
+local DisplayAdvanced = {}
+TS.DisplayAdvanced = DisplayAdvanced
 
-local PM = TS.ProfileManager
-local LSM = LibStub("LibSharedMedia-3.0")
+local LSM = LibStub("LibSharedMedia-3.0", true)
 
 ------------------------------------------------------------
--- Helper: Create a grouped header
+-- Helpers
 ------------------------------------------------------------
-local function CreateHeader(layout, text)
-    local header = layout:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    header:SetText(text)
-    header:SetPoint("TOPLEFT", 0, -12)
-    return header
+local function Header(layout, text)
+    local h = layout:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    h:SetText(text)
+    h:SetPoint("TOPLEFT", 0, -12)
+    return h
+end
+
+local function RefreshPreview()
+    if TS.DisplayPreview and TS.DisplayPreview:IsActive() then
+        TS.DisplayPreview:Start() -- restart = refresh
+    end
+end
+
+local function FireProfileChanged()
+    TS.EventBus:Send("PROFILE_CHANGED")
+    RefreshPreview()
 end
 
 ------------------------------------------------------------
--- Helper: Create a color picker
+-- Slider helper (writes to profile)
 ------------------------------------------------------------
-local function CreateColorPicker(layout, label, key, default)
+local function Slider(layout, label, key, min, max, step, description)
+    local db = TS.db.profile.display
+
     local setting = Settings.RegisterAddOnSetting(
         layout:GetCategory(),
         label,
-        "ThreatSenseDB_" .. key,
-        Settings.VarType.Color,
-        default
-    )
-
-    Settings.CreateColorPicker(
-        layout,
-        setting,
-        label,
-        "Adjust the color used for this display element."
-    )
-
-    setting:SetValueChangedCallback(function(value)
-        PM:Set(key, value)
-        TS.EventBus:Emit("DISPLAY_SETTING_CHANGED", key, value)
-        if TS.DisplayPreview:IsActive() then
-            TS.DisplayPreview:Refresh()
-        end
-    end)
-end
-
-------------------------------------------------------------
--- Helper: Create a slider
-------------------------------------------------------------
-local function CreateSlider(layout, label, key, min, max, step, default, description)
-    local setting = Settings.RegisterAddOnSetting(
-        layout:GetCategory(),
-        label,
-        "ThreatSenseDB_" .. key,
+        nil,
         Settings.VarType.Number,
-        default
+        db[key]
     )
 
     Settings.CreateSlider(
@@ -69,238 +53,165 @@ local function CreateSlider(layout, label, key, min, max, step, default, descrip
     )
 
     setting:SetValueChangedCallback(function(value)
-        PM:Set(key, value)
-        TS.EventBus:Emit("DISPLAY_SETTING_CHANGED", key, value)
-        if TS.DisplayPreview:IsActive() then
-            TS.DisplayPreview:Refresh()
-        end
+        db[key] = value
+        FireProfileChanged()
     end)
 end
 
 ------------------------------------------------------------
--- Helper: Create a dropdown (LSM)
+-- Checkbox helper (writes to profile)
 ------------------------------------------------------------
-local function CreateLSMDropdown(layout, label, key, mediaType, description)
+local function Checkbox(layout, label, key, description)
+    local db = TS.db.profile.display
+
     local setting = Settings.RegisterAddOnSetting(
         layout:GetCategory(),
         label,
-        "ThreatSenseDB_" .. key,
+        nil,
+        Settings.VarType.Boolean,
+        db[key]
+    )
+
+    Settings.CreateCheckbox(layout, setting, label, description)
+
+    setting:SetValueChangedCallback(function(value)
+        db[key] = value
+        FireProfileChanged()
+    end)
+end
+
+------------------------------------------------------------
+-- Color picker helper (writes to profile.colors)
+------------------------------------------------------------
+local function ColorPicker(layout, label, key, default)
+    local db = TS.db.profile.colors
+
+    local setting = Settings.RegisterAddOnSetting(
+        layout:GetCategory(),
+        label,
+        nil,
+        Settings.VarType.Color,
+        db[key] or default
+    )
+
+    Settings.CreateColorPicker(layout, setting, label, "Adjust this color.")
+
+    setting:SetValueChangedCallback(function(value)
+        db[key] = value
+        FireProfileChanged()
+    end)
+end
+
+------------------------------------------------------------
+-- LSM dropdown helper (writes to profile.display)
+------------------------------------------------------------
+local function LSMDropdown(layout, label, key, mediaType, description)
+    local db = TS.db.profile.display
+
+    local setting = Settings.RegisterAddOnSetting(
+        layout:GetCategory(),
+        label,
+        nil,
         Settings.VarType.String,
-        ""
+        db[key]
     )
 
     local function BuildOptions()
         local opts = {}
-        for _, name in ipairs(LSM:List(mediaType)) do
-            table.insert(opts, { text = name, value = name })
+        if LSM then
+            for _, name in ipairs(LSM:List(mediaType)) do
+                table.insert(opts, { text = name, value = name })
+            end
         end
         return opts
     end
 
-    Settings.CreateDropdown(
-        layout,
-        setting,
-        BuildOptions(),
-        label,
-        description
-    )
+    Settings.CreateDropdown(layout, setting, BuildOptions(), label, description)
 
     setting:SetValueChangedCallback(function(value)
-        PM:Set(key, value)
-        TS.EventBus:Emit("DISPLAY_SETTING_CHANGED", key, value)
-        if TS.DisplayPreview:IsActive() then
-            TS.DisplayPreview:Refresh()
-        end
+        db[key] = value
+        FireProfileChanged()
     end)
 end
 
 ------------------------------------------------------------
--- Initialize the Advanced Display Panel
+-- Initialize
 ------------------------------------------------------------
-function ConfigDisplayAdvanced:Initialize()
-    local category, layout = Settings.RegisterVerticalLayoutCategory("ThreatSense - Display (Advanced)")
+function DisplayAdvanced:Initialize()
+    local categoryName = TS.Categories.DISPLAY_ADV
+    local category, layout = Settings.RegisterVerticalLayoutCategory(categoryName)
     self.category = category
 
-    ------------------------------------------------------------
-    -- Section: Textures
-    ------------------------------------------------------------
-    CreateHeader(layout, "Textures")
-
-    CreateLSMDropdown(
-        layout,
-        "Bar Texture",
-        "barTexture",
-        "statusbar",
-        "Select the texture used for threat bars."
-    )
-
-    CreateLSMDropdown(
-        layout,
-        "Background Texture",
-        "backgroundTexture",
-        "background",
-        "Select the background texture for the display."
-    )
+    local db = TS.db.profile.display
 
     ------------------------------------------------------------
-    -- Section: Fonts
+    -- TEXTURES
     ------------------------------------------------------------
-    CreateHeader(layout, "Fonts")
+    Header(layout, "Textures")
 
-    CreateLSMDropdown(
-        layout,
-        "Font",
-        "font",
-        "font",
-        "Select the font used for text in the display."
-    )
+    LSMDropdown(layout, "Bar Texture", "barTexture", "statusbar",
+        "Texture used for threat bars.")
 
-    CreateSlider(
-        layout,
-        "Font Size",
-        "fontSize",
-        8,
-        32,
-        1,
-        12,
-        "Adjust the size of the display font."
-    )
+    LSMDropdown(layout, "Background Texture", "backgroundTexture", "background",
+        "Background texture for the display.")
 
     ------------------------------------------------------------
-    -- Section: Colors
+    -- FONTS
     ------------------------------------------------------------
-    CreateHeader(layout, "Colors")
+    Header(layout, "Fonts")
 
-    CreateColorPicker(
-        layout,
-        "Bar Color",
-        "barColor",
-        { r = 0.8, g = 0.1, b = 0.1, a = 1 }
-    )
+    LSMDropdown(layout, "Font", "font", "font",
+        "Font used for text in the display.")
 
-    local gradientSetting = Settings.RegisterAddOnSetting(
-        category,
-        "Threat Gradient",
-        "ThreatSenseDB_threatGradient",
-        Settings.VarType.Boolean,
-        true
-    )
-
-    Settings.CreateCheckbox(
-        layout,
-        gradientSetting,
-        "Enable Threat Gradient",
-        "Automatically adjust bar color based on threat percentage."
-    )
-
-    gradientSetting:SetValueChangedCallback(function(value)
-        PM:Set("threatGradient", value)
-        TS.EventBus:Emit("DISPLAY_SETTING_CHANGED", "threatGradient", value)
-        if TS.DisplayPreview:IsActive() then
-            TS.DisplayPreview:Refresh()
-        end
-    end)
+    Slider(layout, "Font Size", "fontSize", 8, 32, 1,
+        "Adjust the size of display text.")
 
     ------------------------------------------------------------
-    -- Section: Layout
+    -- COLORS
     ------------------------------------------------------------
-    CreateHeader(layout, "Layout")
+    Header(layout, "Colors")
 
-    CreateSlider(
-        layout,
-        "Bar Height",
-        "barHeight",
-        8,
-        40,
-        1,
-        18,
-        "Adjust the height of each threat bar."
-    )
+    ColorPicker(layout, "Bar Color", "barColor",
+        { r = 0.8, g = 0.1, b = 0.1, a = 1 })
 
-    CreateSlider(
-        layout,
-        "Bar Spacing",
-        "barSpacing",
-        0,
-        10,
-        1,
-        2,
-        "Adjust the spacing between bars."
-    )
-
-    CreateSlider(
-        layout,
-        "List Row Height",
-        "rowHeight",
-        10,
-        40,
-        1,
-        16,
-        "Adjust the height of each row in the threat list."
-    )
-
-    CreateSlider(
-        layout,
-        "List Row Spacing",
-        "rowSpacing",
-        0,
-        10,
-        1,
-        1,
-        "Adjust the spacing between rows in the threat list."
-    )
+    Checkbox(layout, "Enable Threat Gradient", "threatGradient",
+        "Automatically adjust bar color based on threat percentage.")
 
     ------------------------------------------------------------
-    -- Section: Behavior
+    -- LAYOUT
     ------------------------------------------------------------
-    CreateHeader(layout, "Behavior")
+    Header(layout, "Layout")
 
-    CreateSlider(
-        layout,
-        "Smooth Animation Speed",
-        "smoothSpeed",
-        0,
-        1,
-        0.05,
-        0.2,
-        "Adjust the speed of bar smoothing animations."
-    )
+    Slider(layout, "Bar Height", "barHeight", 8, 40, 1,
+        "Height of each threat bar.")
 
-    local fadeSetting = Settings.RegisterAddOnSetting(
-        category,
-        "Combat Fade",
-        "ThreatSenseDB_combatFade",
-        Settings.VarType.Boolean,
-        false
-    )
+    Slider(layout, "Bar Spacing", "barSpacing", 0, 10, 1,
+        "Spacing between bars.")
 
-    Settings.CreateCheckbox(
-        layout,
-        fadeSetting,
-        "Enable Combat Fade",
-        "Fade the display when out of combat."
-    )
+    Slider(layout, "List Row Height", "rowHeight", 10, 40, 1,
+        "Height of each row in the threat list.")
 
-    fadeSetting:SetValueChangedCallback(function(value)
-        PM:Set("combatFade", value)
-        TS.EventBus:Emit("DISPLAY_SETTING_CHANGED", "combatFade", value)
-    end)
-
-    CreateSlider(
-        layout,
-        "Combat Fade Opacity",
-        "combatFadeOpacity",
-        0,
-        1,
-        0.05,
-        0.4,
-        "Adjust the opacity of the display when faded."
-    )
+    Slider(layout, "List Row Spacing", "rowSpacing", 0, 10, 1,
+        "Spacing between rows in the threat list.")
 
     ------------------------------------------------------------
-    -- Section: Preview
+    -- BEHAVIOR
     ------------------------------------------------------------
-    CreateHeader(layout, "Preview")
+    Header(layout, "Behavior")
+
+    Slider(layout, "Smooth Animation Speed", "smoothSpeed", 0, 1, 0.05,
+        "Speed of bar smoothing animations.")
+
+    Checkbox(layout, "Combat Fade", "combatFade",
+        "Fade the display when out of combat.")
+
+    Slider(layout, "Combat Fade Opacity", "combatFadeOpacity", 0, 1, 0.05,
+        "Opacity of the display when faded.")
+
+    ------------------------------------------------------------
+    -- PREVIEW
+    ------------------------------------------------------------
+    Header(layout, "Preview")
 
     Settings.CreateControlButton(
         layout,
@@ -316,7 +227,9 @@ function ConfigDisplayAdvanced:Initialize()
     )
 
     ------------------------------------------------------------
-    -- Register Category
+    -- Register
     ------------------------------------------------------------
     Settings.RegisterAddOnCategory(category)
 end
+
+return DisplayAdvanced
